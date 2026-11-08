@@ -1,161 +1,265 @@
-import React, { useState } from "react";
-import { Scissors, Sparkles, Terminal } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Scissors, Settings, Terminal } from "lucide-react";
 import { BeatMap, EffectType, Panel, TimelineClip } from "./types/project";
 import { ChapterImporter } from "./components/ChapterImporter";
 import { PanelGallery } from "./components/PanelGallery";
 import { AudioWaveform } from "./components/AudioWaveform";
 import { TimelineEditor } from "./components/TimelineEditor";
 import { VideoPreview } from "./components/VideoPreview";
-import { generateAutoTimeline } from "./services/tauriCommands";
+import { DependencyStatus } from "./components/DependencyStatus";
+import { AiSettingsModal } from "./components/AiSettingsModal";
+import { loadAiSettings, toReviewConfig } from "./services/aiSettings";
+import { applyAdjust, BeatAdjust, localSongQueries, NO_ADJUST, songFit, targetPanelCount } from "./services/beatAdjust";
+import { usePlayback } from "./services/usePlayback";
+import {
+  aiDirectTimeline,
+  analyzeAudioBeats,
+  defaultOutputPath,
+  downloadAudio,
+  generateAutoTimeline,
+  renderMontagemVideo,
+  reviewEpicPanels,
+  suggestSongQueries,
+  scrapeComicChapter,
+} from "./services/tauriCommands";
+import { AutoPilot, AutoInput, platformFor } from "./components/AutoPilot";
+
+// Browser-only fallback (no Rust backend): same cut pattern, simplified.
+function localTimeline(selected: Panel[], audio: BeatMap): TimelineClip[] {
+  const cuts = [0, ...audio.beats.map((b) => b.timestampSec).filter((t) => t > 0.15)];
+  return cuts.map((start, i) => {
+    const end = cuts[i + 1] ?? audio.durationSec;
+    const panel = selected[i % selected.length];
+    const after = start >= audio.mainDropSec - 0.05;
+    const effect: EffectType = panel.isVerticalPan
+      ? "VerticalPanScroll"
+      : after
+      ? i % 2 === 0
+        ? "ZoomPunch"
+        : "CameraShake"
+      : "SlowPushIn";
+    return {
+      id: `clip-${i + 1}`,
+      panelId: panel.id,
+      panelIndex: panel.index,
+      role: panel.role,
+      startSec: start,
+      endSec: end,
+      durationSec: Math.max(0.2, end - start),
+      effect,
+      beatIntensity: after ? 0.95 : 0.5,
+      shakeAmplitude: after ? 14 : 2,
+      zoomScale: after ? 1.18 : 1.06,
+    };
+  });
+}
 
 export function App() {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [chapterTitle, setChapterTitle] = useState<string>("");
-  const [beatMap, setBeatMap] = useState<BeatMap | null>(null);
+  const [rawBeatMap, setRawBeatMap] = useState<BeatMap | null>(null);
+  const [adjust, setAdjust] = useState<BeatAdjust>(NO_ADJUST);
   const [timeline, setTimeline] = useState<TimelineClip[]>([]);
+  const [ai, setAi] = useState(loadAiSettings);
+  const [showSettings, setShowSettings] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>(
-    "Siap! Pilih platform (Webtoon, MangaDex, VoraToon https://voratoon.web.id/, atau Web Custom) untuk memulai."
+    "Siap! Mulai dari langkah 1: pilih sumber komik."
   );
 
-  const buildLocalTimelineFallback = (
-    selectedPanels: Panel[],
-    audio: BeatMap
-  ): TimelineClip[] => {
-    if (selectedPanels.length === 0) return [];
-    const beats = audio.beats;
-    const clips: TimelineClip[] = [];
+  const beatMap = useMemo(
+    () => (rawBeatMap ? applyAdjust(rawBeatMap, adjust) : null),
+    [rawBeatMap, adjust]
+  );
+  const duration = timeline.length
+    ? timeline[timeline.length - 1].endSec
+    : beatMap?.durationSec || 9;
+  const playback = usePlayback(beatMap, duration, setStatusMessage);
 
-    for (let i = 0; i < selectedPanels.length; i++) {
-      const panel = selectedPanels[i];
-      const startSec =
-        i < beats.length
-          ? beats[i].timestampSec
-          : (i / selectedPanels.length) * audio.durationSec;
-      const endSec =
-        i + 1 < beats.length && i + 1 < selectedPanels.length
-          ? beats[i + 1].timestampSec
-          : i === selectedPanels.length - 1
-          ? audio.durationSec
-          : startSec + audio.durationSec / selectedPanels.length;
+  const selected = panels.filter((p) => p.selected);
 
-      const isAfterDrop = startSec >= audio.mainDropSec - 0.05;
-      let effect: EffectType = "SlowPushIn";
-      if (panel.isVerticalPan) {
-        effect = "VerticalPanScroll";
-      } else if (isAfterDrop && i % 2 === 0) {
-        effect = "ZoomPunch";
-      } else if (isAfterDrop) {
-        effect = "CameraShake";
+  const targetPanels = beatMap ? targetPanelCount(beatMap) : 12;
+
+  const sync = async (bm: BeatMap, sel: Panel[], useAi = false): Promise<TimelineClip[]> => {
+    const done = (clips: TimelineClip[]) => {
+      setTimeline(clips);
+      return clips;
+    };
+    if (sel.length === 0) return done([]);
+    if (useAi && ai.provider !== "HeuristicOnly") {
+      setStatusMessage("AI director menyusun panel & efek per potongan...");
+      try {
+        const directed = await aiDirectTimeline(sel, bm, toReviewConfig(ai, sel.length));
+        setStatusMessage(`AI director selesai: ${directed.length} potongan.`);
+        return done(directed);
+      } catch (e: any) {
+        setStatusMessage(`AI director gagal (${e?.message || e}); memakai director lokal.`);
       }
-
-      clips.push({
-        id: `clip-${i + 1}`,
-        panelId: panel.id,
-        panelIndex: panel.index,
-        role: panel.role,
-        startSec,
-        endSec,
-        durationSec: Math.max(0.2, endSec - startSec),
-        effect,
-        beatIntensity: isAfterDrop ? 0.95 : 0.5,
-        shakeAmplitude: isAfterDrop ? 14.0 : 2.0,
-        zoomScale: isAfterDrop ? 1.18 : 1.05,
-      });
     }
-    return clips;
-  };
-
-  const handleSyncTimeline = async () => {
-    const activePanels = panels.filter((p) => p.selected);
-    if (activePanels.length === 0 || !beatMap) return;
-
     try {
-      const generated = await generateAutoTimeline(activePanels, beatMap);
-      if (generated && generated.length > 0) {
-        setTimeline(generated);
-      } else {
-        setTimeline(buildLocalTimelineFallback(activePanels, beatMap));
-      }
-      setStatusMessage(
-        `Timeline otomatis dibuat! ${activePanels.length} panel telah disinkronkan dengan Beat Drop lagu Montagem.`
-      );
+      const generated = await generateAutoTimeline(sel, bm);
+      return done(generated.length ? generated : localTimeline(sel, bm));
     } catch {
-      const fallback = buildLocalTimelineFallback(activePanels, beatMap);
-      setTimeline(fallback);
-      setStatusMessage(
-        `Timeline disinkronkan (${fallback.length} klip mengikuti ketukan bass)!`
-      );
+      return done(localTimeline(sel, bm));
     }
   };
+
+  // The beatMap effect below must not race the auto pipeline's own sync.
+  const autoRunning = useRef(false);
+
+  /** One-click pipeline: scrape -> audio -> AI panel review -> AI director -> optional render. */
+  const runAuto = async (input: AutoInput, step: (i: number, label: string) => void) => {
+    autoRunning.current = true;
+    const useAi = ai.provider !== "HeuristicOnly";
+    try {
+      step(0, "Mengambil & memotong panel...");
+      setTimeline([]);
+      const scraped = await scrapeComicChapter({
+        url: input.url,
+        platform: platformFor(input.url),
+        comicFormat: input.url.includes("mangadex") ? "MangaRTL" : "WebtoonVertical",
+      });
+      let list = scraped.extractedPanels;
+      if (list.length === 0) throw new Error("Tidak ada panel yang berhasil diekstrak.");
+      setPanels(list);
+      setChapterTitle(scraped.chapterTitle);
+
+      step(1, "Menyiapkan audio & mendeteksi beat...");
+      const looksLocal = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(input.song) && !/^https?:\/\//i.test(input.song);
+      let bm: BeatMap;
+      if (input.song) {
+        bm = await analyzeAudioBeats(looksLocal ? input.song : await downloadAudio(input.song));
+      } else {
+        // No song given: pick one whose mood and length fit the panels.
+        const want = Math.max(6, list.filter((p) => p.selected).length);
+        let queries = localSongQueries(list);
+        if (useAi) {
+          step(1, "AI membaca mood panel untuk memilih lagu...");
+          try {
+            queries = await suggestSongQueries(list, toReviewConfig(ai, want));
+          } catch (e: any) {
+            setStatusMessage(`Saran lagu AI gagal (${e?.message || e}); memakai preset lokal.`);
+          }
+        }
+        let best: { bm: BeatMap; fit: number; q: string } | null = null;
+        for (const [i, q] of queries.slice(0, 3).entries()) {
+          step(1, `Mencoba lagu ${i + 1}/3: ${q}`);
+          try {
+            const cand = await analyzeAudioBeats(await downloadAudio(q));
+            const fit = songFit(cand, want);
+            if (!best || fit > best.fit) best = { bm: cand, fit, q };
+            if (fit >= 0.8) break;
+          } catch (e: any) {
+            setStatusMessage(`Lagu "${q}" dilewati: ${e?.message || e}`);
+          }
+        }
+        if (!best) throw new Error("Tidak ada lagu yang berhasil diunduh. Isi kolom lagu secara manual.");
+        bm = best.bm;
+        setStatusMessage(`Lagu terpilih: ${bm.fileName} (kecocokan ${(best.fit * 100).toFixed(0)}%, query "${best.q}").`);
+      }
+      setRawBeatMap(bm);
+      setAdjust(NO_ADJUST);
+
+      step(2, useAi ? "AI memilih panel epic..." : "Memilih panel epic (lokal)...");
+      try {
+        list = await reviewEpicPanels(list, toReviewConfig(ai, targetPanelCount(bm)));
+      } catch (e: any) {
+        setStatusMessage(`Review AI gagal (${e?.message || e}); memakai pilihan lokal.`);
+      }
+      setPanels(list);
+      const chosen = list.filter((p) => p.selected);
+
+      step(3, useAi ? "AI director menyusun timeline..." : "Menyusun timeline (lokal)...");
+      const clips = await sync(bm, chosen, true);
+
+      if (input.render) {
+        step(4, "Merender video MP4...");
+        const out = await defaultOutputPath();
+        await renderMontagemVideo(list, bm, clips, {
+          outputPath: out,
+          width: 1080,
+          height: 1920,
+          fps: 60,
+          blurBackground: true,
+          vignetteStrength: 0.35,
+          beatFlashEnabled: true,
+        });
+        setStatusMessage(`Auto selesai! Video tersimpan di: ${out}`);
+      } else {
+        setStatusMessage(`Auto selesai: ${chosen.length} panel, ${clips.length} potongan. Putar preview lalu render.`);
+      }
+    } finally {
+      autoRunning.current = false;
+    }
+  };
+
+  // Keep the timeline in step with beat adjustments / panel selection once one exists.
+  const hadTimeline = useRef(false);
+  hadTimeline.current = timeline.length > 0;
+  useEffect(() => {
+    if (beatMap && hadTimeline.current && !autoRunning.current) void sync(beatMap, selected);
+  }, [beatMap]);
 
   return (
-    <div className="min-h-screen h-screen flex flex-col bg-zinc-950 text-zinc-100 select-none">
-      {/* Header Navbar */}
-      <header className="h-13 px-5 py-2.5 border-b border-zinc-800/90 bg-zinc-950/90 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-rose-600 flex items-center justify-center shadow-md shadow-violet-950">
-            <Scissors className="w-4 h-4 text-white" />
+    <div className="flex h-screen select-none flex-col bg-zinc-950 text-zinc-100">
+      <div className="pointer-events-none fixed inset-0 -z-0 bg-[radial-gradient(ellipse_at_top_left,rgba(124,58,237,0.14),transparent_55%),radial-gradient(ellipse_at_bottom_right,rgba(236,72,153,0.08),transparent_50%)]" />
+
+      <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-white/[0.06] bg-zinc-950/70 px-5 py-2.5 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-950/60">
+            <Scissors className="h-4 w-4 text-white" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold tracking-tight text-white">
-                ComiCut Studio
-              </h1>
-              <span className="text-[10px] font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30 px-2 py-0.2 rounded-full">
-                Rust + Tauri v2
-              </span>
-            </div>
-            <p className="text-[11px] text-zinc-400">
-              Auto Webtoon/Manga Epic Panel Slicer &amp; Montagem Beat-Sync
-              Video Maker
-            </p>
+            <h1 className="text-sm font-bold tracking-tight text-white">ComiCut Studio</h1>
+            <p className="text-[11px] text-zinc-500">Webtoon / Manga → Montagem Reels &amp; Shorts</p>
           </div>
         </div>
-
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-zinc-500 hidden md:inline">
-            Supported: LINE Webtoon • MangaDex • VoraToon (voratoon.web.id) •
-            Custom Web
-          </span>
-          <span className="bg-zinc-900 border border-zinc-800 px-2.5 py-1 rounded-lg text-[11px] text-amber-300 flex items-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            9:16 Reels / Shorts Engine
-          </span>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowSettings(true)}
+          className="btn-ghost"
+          title="Pengaturan AI Vision"
+        >
+          <Settings className="h-3.5 w-3.5" />
+          Pengaturan
+        </button>
       </header>
 
-      {/* Main Workspace Grid */}
-      <main className="flex-1 grid grid-cols-12 gap-3.5 p-4 overflow-y-auto">
-        {/* Left & Center Column (Importer, Panel Reviewer, Audio, Timeline) */}
-        <div className="col-span-12 lg:col-span-8 xl:col-span-9 flex flex-col gap-3.5">
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-3.5">
-            <div className="xl:col-span-5">
+      <main className="relative z-10 grid flex-1 grid-cols-12 gap-4 overflow-y-auto p-4">
+        <div className="col-span-12 flex flex-col gap-4 xl:col-span-8 2xl:col-span-9">
+          <AutoPilot ai={ai} onRun={runAuto} onOpenSettings={() => setShowSettings(true)} />
+          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
+            <div className="2xl:col-span-5">
               <ChapterImporter
-                onPanelsLoaded={(loadedPanels, title) => {
-                  setPanels(loadedPanels);
+                onPanelsLoaded={(p, title) => {
+                  setPanels(p);
                   setChapterTitle(title);
+                  setTimeline([]);
                 }}
                 onStatusMessage={setStatusMessage}
               />
             </div>
-            <div className="xl:col-span-7">
+            <div className="2xl:col-span-7">
               <PanelGallery
                 panels={panels}
                 chapterTitle={chapterTitle}
                 onUpdatePanels={setPanels}
                 onStatusMessage={setStatusMessage}
+                ai={ai}
+                targetPanels={targetPanels}
+                onOpenSettings={() => setShowSettings(true)}
               />
             </div>
           </div>
 
           <AudioWaveform
-            beatMap={beatMap}
+            beatMap={rawBeatMap ? beatMap : null}
+            adjust={adjust}
+            onAdjust={setAdjust}
+            playback={playback}
             onBeatMapLoaded={(bm) => {
-              setBeatMap(bm);
-              if (panels.length > 0) {
-                const active = panels.filter((p) => p.selected);
-                setTimeline(buildLocalTimelineFallback(active, bm));
-              }
+              setRawBeatMap(bm);
+              setAdjust(NO_ADJUST);
+              void sync(bm, selected);
             }}
             onStatusMessage={setStatusMessage}
           />
@@ -164,30 +268,36 @@ export function App() {
             timeline={timeline}
             panels={panels}
             beatMap={beatMap}
-            onGenerateTimeline={handleSyncTimeline}
+            currentTime={playback.time}
+            onSeek={playback.seek}
+            onGenerateTimeline={async () => {
+              if (!beatMap) return;
+              await sync(beatMap, selected, true);
+            }}
           />
+          <DependencyStatus onStatusMessage={setStatusMessage} />
         </div>
 
-        {/* Right Column (9:16 Vertical Preview & Export) */}
-        <div className="col-span-12 lg:col-span-4 xl:col-span-3">
-          <VideoPreview
-            panels={panels}
-            beatMap={beatMap}
-            timeline={timeline}
-            onStatusMessage={setStatusMessage}
-          />
+        <div className="col-span-12 xl:col-span-4 2xl:col-span-3">
+          <div className="xl:sticky xl:top-0">
+            <VideoPreview
+              panels={panels}
+              beatMap={beatMap}
+              timeline={timeline}
+              playback={playback}
+              onStatusMessage={setStatusMessage}
+            />
+          </div>
         </div>
       </main>
 
-      {/* Status Footer */}
-      <footer className="h-8 px-4 bg-zinc-900 border-t border-zinc-800 flex items-center justify-between text-[11px] text-zinc-400 shrink-0">
-        <div className="flex items-center gap-2 truncate">
-          <Terminal className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-          <span className="truncate">{statusMessage}</span>
-        </div>
-        <span className="text-zinc-500 font-mono shrink-0">
-          Engine: Rust ImageProc + Symphonia FFT + FFmpeg Pipe
-        </span>
+      {showSettings && (
+        <AiSettingsModal settings={ai} onSave={setAi} onClose={() => setShowSettings(false)} />
+      )}
+
+      <footer className="relative z-10 flex h-8 shrink-0 items-center gap-2 border-t border-white/[0.06] bg-zinc-950/80 px-4 text-[11px] text-zinc-400">
+        <Terminal className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+        <span className="truncate">{statusMessage}</span>
       </footer>
     </div>
   );

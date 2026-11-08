@@ -38,7 +38,7 @@ pub fn default_platform_presets() -> Vec<PlatformPreset> {
             base_url: "https://voratoon.web.id".to_string(),
             example_url: "https://voratoon.web.id/".to_string(),
             default_format: ComicFormat::WebtoonVertical,
-            image_selector: "#readerarea img, .reading-content img, .chapter-area img".to_string(),
+            image_selector: "#readerarea img, .reading-content img, .chapter-area img, img[class*=\"chapterPage\"]".to_string(),
             referer_header: "https://voratoon.web.id/".to_string(),
             description: "Preset khusus https://voratoon.web.id/ (mendukung ekstraksi #readerarea, lazy-src, & ts_reader JSON).".to_string(),
         },
@@ -48,7 +48,7 @@ pub fn default_platform_presets() -> Vec<PlatformPreset> {
             base_url: "https://".to_string(),
             example_url: "https://voratoon.web.id/".to_string(),
             default_format: ComicFormat::WebtoonVertical,
-            image_selector: "#readerarea img, .reading-content img, .chapter-content img, article img".to_string(),
+            image_selector: "#readerarea img, .reading-content img, .chapter-content img, img[class*=\"chapterPage\"], article img".to_string(),
             referer_header: "".to_string(),
             description: "Universal Scraper untuk website komik/manhwa/manga apapun yang diinput user.".to_string(),
         },
@@ -70,7 +70,14 @@ pub async fn scrape_and_slice_chapter(req: &ScraperRequest) -> Result<ScrapeResu
         .filter(|s| !s.trim().is_empty())
         .unwrap_or(default_origin);
 
+    println!(
+        "[scraper] start platform={:?} url={} referer={} selector={:?}",
+        req.platform, req.url, referer, req.custom_selector
+    );
+
+    let is_shinigami = parsed_url.host_str().is_some_and(|h| h.contains("shinigami"));
     let (chapter_title, image_urls, source_label) = match req.platform {
+        _ if is_shinigami => fetch_shinigami_chapter(&client, &req.url).await?,
         PlatformKind::MangaDex => fetch_mangadex_chapter(&client, &req.url).await?,
         PlatformKind::Webtoon => {
             fetch_html_chapter_images(
@@ -86,7 +93,7 @@ pub async fn scrape_and_slice_chapter(req: &ScraperRequest) -> Result<ScrapeResu
             let selector = req
                 .custom_selector
                 .as_deref()
-                .unwrap_or("#readerarea img, .reading-content img, .chapter-area img, article img");
+                .unwrap_or("#readerarea img, .reading-content img, .chapter-area img, img[class*=\"chapterPage\"], article img");
             fetch_html_chapter_images(
                 &client,
                 &req.url,
@@ -100,7 +107,7 @@ pub async fn scrape_and_slice_chapter(req: &ScraperRequest) -> Result<ScrapeResu
             let selector = req
                 .custom_selector
                 .as_deref()
-                .unwrap_or("#readerarea img, .reading-content img, .chapter-content img, #_imageList img, article img");
+                .unwrap_or("#readerarea img, .reading-content img, .chapter-content img, img[class*=\"chapterPage\"], #_imageList img, article img");
             fetch_html_chapter_images(
                 &client,
                 &req.url,
@@ -111,6 +118,11 @@ pub async fn scrape_and_slice_chapter(req: &ScraperRequest) -> Result<ScrapeResu
             .await?
         }
     };
+
+    println!("[scraper] title={:?} source={} images_found={}", chapter_title, source_label, image_urls.len());
+    for (i, u) in image_urls.iter().enumerate() {
+        println!("[scraper]   img {:03}: {}", i + 1, u);
+    }
 
     if image_urls.is_empty() {
         return Err(anyhow!(
@@ -137,9 +149,14 @@ pub async fn scrape_and_slice_chapter(req: &ScraperRequest) -> Result<ScrapeResu
             HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0"),
         );
 
-        if let Ok(resp) = client.get(img_url).headers(headers).send().await {
-            if resp.status().is_success() {
+        match client.get(img_url).headers(headers).send().await {
+            Err(e) => println!("[scraper] download {:03} FAILED: {} ({})", idx + 1, e, img_url),
+            Ok(resp) if !resp.status().is_success() => {
+                println!("[scraper] download {:03} HTTP {} ({})", idx + 1, resp.status(), img_url)
+            }
+            Ok(resp) => {
                 if let Ok(bytes) = resp.bytes().await {
+                    println!("[scraper] download {:03} ok {} bytes", idx + 1, bytes.len());
                     let ext = if img_url.contains(".png") {
                         "png"
                     } else if img_url.contains(".webp") {
@@ -156,12 +173,14 @@ pub async fn scrape_and_slice_chapter(req: &ScraperRequest) -> Result<ScrapeResu
         }
     }
 
+    println!("[scraper] downloaded {}/{} pages, slicing", downloaded_paths.len(), image_urls.len().min(45));
     let extracted_panels = slice_comic_images(&downloaded_paths, req.comic_format)?;
     let downloaded_str = downloaded_paths
         .iter()
         .map(|p| p.to_string_lossy().to_string())
         .collect();
 
+    println!("[scraper] done panels={}", extracted_panels.len());
     Ok(ScrapeResult {
         chapter_title,
         source_platform: source_label,
@@ -184,6 +203,7 @@ async fn fetch_mangadex_chapter(
         .ok_or_else(|| anyhow!("UUID Chapter MangaDex tidak ditemukan pada URL."))?;
 
     let api_url = format!("https://api.mangadex.org/at-home/server/{}", chapter_id);
+    println!("[scraper] mangadex api GET {}", api_url);
     let json: serde_json::Value = client.get(&api_url).send().await?.json().await?;
 
     let base_url = json["baseUrl"]
@@ -209,6 +229,41 @@ async fn fetch_mangadex_chapter(
     ))
 }
 
+// Shinigami = SvelteKit SPA, HTML kosong; gambar dari JSON API.
+async fn fetch_shinigami_chapter(
+    client: &reqwest::Client,
+    chapter_url: &str,
+) -> Result<(String, Vec<String>, String)> {
+    let re = Regex::new(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})")?;
+    let id = re
+        .captures(chapter_url)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str())
+        .ok_or_else(|| anyhow!("UUID chapter Shinigami tidak ditemukan pada URL."))?;
+
+    let api = format!("https://api.shngm.io/v1/chapter/detail/{}", id);
+    println!("[scraper] shinigami api GET {}", api);
+    let resp = client.get(&api).send().await?;
+    println!("[scraper] shinigami api status={}", resp.status());
+    let json: serde_json::Value = resp.json().await?;
+
+    let d = &json["data"];
+    let base = d["base_url"].as_str().unwrap_or("https://assets.shngm.id");
+    let path = d["chapter"]["path"]
+        .as_str()
+        .ok_or_else(|| anyhow!("Respons Shinigami tanpa chapter.path: {}", json["message"]))?;
+    let urls: Vec<String> = d["chapter"]["data"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|f| f.as_str()).map(|f| format!("{}{}{}", base, path, f)).collect())
+        .unwrap_or_default();
+
+    Ok((
+        format!("Shinigami Chapter {}", d["chapter_number"]),
+        urls,
+        "Shinigami".to_string(),
+    ))
+}
+
 async fn fetch_html_chapter_images(
     client: &reqwest::Client,
     page_url: &str,
@@ -221,13 +276,23 @@ async fn fetch_html_chapter_images(
         headers.insert(REFERER, r);
     }
 
-    let html_text = client
-        .get(page_url)
-        .headers(headers)
-        .send()
-        .await?
-        .text()
-        .await?;
+    println!("[scraper] html GET {} selector={:?}", page_url, css_selector);
+    // Sites behind Cloudflare return transient 5xx (e.g. 503 / error 1102); retry a few times.
+    let mut html_text = String::new();
+    for attempt in 1..=4u64 {
+        let resp = client.get(page_url).headers(headers.clone()).send().await?;
+        let status = resp.status();
+        println!("[scraper] html status={} (attempt {})", status, attempt);
+        if status.is_success() {
+            html_text = resp.text().await?;
+            break;
+        }
+        if attempt == 4 || !(status.is_server_error() || status.as_u16() == 429) {
+            return Err(anyhow!("Situs membalas HTTP {} untuk {}", status, page_url));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(800 * attempt)).await;
+    }
+    println!("[scraper] html bytes={}", html_text.len());
 
     let base = Url::parse(page_url)?;
     let mut image_urls: Vec<String> = Vec::new();
@@ -271,6 +336,34 @@ async fn fetch_html_chapter_images(
         }
     }
 
+    println!("[scraper] selector matched {} images", image_urls.len());
+
+    // 1b. Selector found nothing: take every <img> that looks like a comic page.
+    if image_urls.is_empty() {
+        let document = Html::parse_document(&html_text);
+        if let Ok(any_img) = Selector::parse("img") {
+            for img in document.select(&any_img) {
+                let candidate = img
+                    .value()
+                    .attr("data-url")
+                    .or_else(|| img.value().attr("data-lazy-src"))
+                    .or_else(|| img.value().attr("data-src"))
+                    .or_else(|| img.value().attr("src"));
+                if let Some(raw) = candidate.map(str::trim) {
+                    if is_likely_comic_image(raw) {
+                        if let Ok(u) = base.join(raw) {
+                            let s = u.to_string();
+                            if !image_urls.contains(&s) {
+                                image_urls.push(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        println!("[scraper] generic <img> fallback found {} images", image_urls.len());
+    }
+
     // 2. Fallback khusus situs Manhwa/Manga berbasis Themesia / VoraToon (ts_reader.run JSON)
     if image_urls.is_empty() {
         if let Ok(re_ts) = Regex::new(r#"\"images\"\s*:\s*\[([^\]]+)\]"#) {
@@ -296,7 +389,7 @@ async fn fetch_html_chapter_images(
 
 fn is_likely_comic_image(url: &str) -> bool {
     let lower = url.to_lowercase();
-    if lower.is_empty() || lower.starts_with("data:image/svg") || lower.contains("logo") || lower.contains("avatar") {
+    if lower.is_empty() || lower.starts_with("data:image/svg") || lower.contains("logo") || lower.contains("avatar") || lower.contains("thumbnail") || lower.contains("histats") || lower.contains("favicon") {
         return false;
     }
     lower.contains(".jpg")

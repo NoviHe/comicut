@@ -8,14 +8,17 @@ use crate::models::panel::{BoundingBox, Panel};
 
 /// Menyambung atau memindai strip gambar Webtoon secara vertikal dan memotong pada baris gutter
 /// (ruang kosong putih/hitam seragam di antara panel) agar tidak membelah gambar karakter.
-pub fn slice_vertical_webtoon(image_paths: &[PathBuf]) -> Result<Vec<Panel>> {
+pub fn slice_vertical_webtoon(image_paths: &[PathBuf], credit: &[bool]) -> Result<Vec<Panel>> {
     let out_dir = std::env::temp_dir().join("comicut_cache").join("sliced_panels");
     fs::create_dir_all(&out_dir)?;
 
     let mut panels: Vec<Panel> = Vec::new();
     let mut panel_counter = 0usize;
 
-    for path in image_paths {
+    for (page_idx, path) in image_paths.iter().enumerate() {
+        if credit.get(page_idx).copied().unwrap_or(false) {
+            continue; // scanlator credit / ad page
+        }
         let Ok(img) = image::open(path) else {
             continue;
         };
@@ -32,10 +35,13 @@ pub fn slice_vertical_webtoon(image_paths: &[PathBuf]) -> Result<Vec<Panel>> {
             }
 
             let cropped = img.crop_imm(0, y_start, width, seg_h);
+            let metrics = analyze_panel_metrics(&cropped, panel_counter, image_paths.len() * 2);
+            if metrics.is_blank {
+                println!("[slicer] skipped blank/text-only segment (page {}, y {}..{})", page_idx + 1, y_start, y_end);
+                continue;
+            }
             let out_path = out_dir.join(format!("webtoon_panel_{:03}.png", panel_counter + 1));
             let _ = cropped.save(&out_path);
-
-            let metrics = analyze_panel_metrics(&cropped, panel_counter, image_paths.len() * 2);
 
             panels.push(Panel {
                 id: format!("panel-{}", panel_counter + 1),

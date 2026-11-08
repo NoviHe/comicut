@@ -51,5 +51,6 @@ pub struct VisionReviewConfig {
     pub provider: String,
     pub api_key: Option<String>,
     pub model_name: String,
+    pub base_url: Option<String>,
     pub max_panels_to_select: usize,
 }
