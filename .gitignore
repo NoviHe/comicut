@@ -1,0 +1,30 @@
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Rust / Tauri v2
+src-tauri/target/
+src-tauri/gen/
+src-tauri/WixTools/
+**/*.rs.bk
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Editor & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated Media / Cache
+*.mp4
+comicut_cache/
