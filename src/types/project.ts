@@ -101,8 +101,10 @@ export interface TimelineClip {
 }
 
 export interface VisionReviewConfig {
-  provider: "Gemini" | "OpenAI" | "Ollama" | "HeuristicOnly";
+  provider: "OpenAI" | "Anthropic" | "HeuristicOnly";
   apiKey?: string;
+  /** OpenAI-compatible: https://host/v1 ; Anthropic-compatible: https://host (or .../v1). Empty = official. */
+  baseUrl?: string;
   modelName: string;
   maxPanelsToSelect: number;
 }

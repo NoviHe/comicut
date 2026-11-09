@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
   BeatMap,
   ComicFormat,
@@ -13,6 +13,12 @@ import {
 
 const isTauri = () =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+/** Real image URL for a panel (sliced PNG on disk); undefined for sample/browser panels. */
+export const panelImageSrc = (panel: Panel): string | undefined =>
+  isTauri() && panel.imagePath && !panel.imagePath.startsWith("sample://")
+    ? convertFileSrc(panel.imagePath)
+    : undefined;
 
 export const DEFAULT_PLATFORM_PRESETS: PlatformPreset[] = [
   {
@@ -44,7 +50,8 @@ export const DEFAULT_PLATFORM_PRESETS: PlatformPreset[] = [
     baseUrl: "https://voratoon.web.id",
     exampleUrl: "https://voratoon.web.id/judul-manhwa-chapter-01/",
     defaultFormat: "WebtoonVertical",
-    imageSelector: "#readerarea img, .reading-content img, .chapter-area img",
+    imageSelector:
+      '#readerarea img, .reading-content img, .chapter-area img, img[class*="chapterPage"]',
     refererHeader: "https://voratoon.web.id/",
     description:
       "Preset khusus untuk https://voratoon.web.id/ (mendukung ekstraksi #readerarea, lazy-src, dan ts_reader JSON).",
@@ -114,6 +121,14 @@ export async function analyzeAudioBeats(audioPath: string): Promise<BeatMap> {
   return await invoke<BeatMap>("analyze_audio_beats", { audioPath });
 }
 
+/** Link (YouTube/TikTok/SoundCloud...) or search text -> local mp3 path via yt-dlp. */
+export async function downloadAudio(source: string): Promise<string> {
+  if (!isTauri()) {
+    throw new Error("Download audio membutuhkan runtime Tauri Rust.");
+  }
+  return await invoke<string>("download_audio", { source });
+}
+
 export async function generateAutoTimeline(
   panels: Panel[],
   beatMap: BeatMap
@@ -142,4 +157,67 @@ export async function renderMontagemVideo(
     timeline,
     config,
   });
+}
+
+/** Playable URL for an analysed audio file (copied into the asset scope by the backend). */
+export const audioSrc = (path: string): string | undefined =>
+  isTauri() && path && !path.startsWith("sample://")
+    ? convertFileSrc(path)
+    : undefined;
+
+export const isTauriRuntime = isTauri;
+
+export interface DepStatus {
+  id: string;
+  name: string;
+  purpose: string;
+  required: boolean;
+  found: boolean;
+  version?: string;
+  path?: string;
+  outdated: boolean;
+  installHint: string;
+}
+
+export interface DepReport {
+  deps: DepStatus[];
+  system: { cpu: string; threads: number; gpuEncoder?: string; gpus: string[] };
+}
+
+export async function checkDependencies(): Promise<DepReport> {
+  if (!isTauri()) throw new Error("Cek dependensi membutuhkan runtime Tauri.");
+  return await invoke<DepReport>("check_dependencies");
+}
+
+export async function updateYtdlp(): Promise<string> {
+  if (!isTauri()) throw new Error("Update membutuhkan runtime Tauri.");
+  return await invoke<string>("update_ytdlp");
+}
+
+/** AI picks panel + effect per beat-fitted cut. Throws on API failure so the caller can fall back to local. */
+export async function aiDirectTimeline(
+  panels: Panel[],
+  beatMap: BeatMap,
+  config: VisionReviewConfig
+): Promise<TimelineClip[]> {
+  if (!isTauri()) throw new Error("AI director membutuhkan runtime Tauri.");
+  return await invoke<TimelineClip[]>("ai_direct_timeline", { panels, beatMap, config });
+}
+
+export async function defaultOutputPath(): Promise<string> {
+  try {
+    const { videoDir, join } = await import("@tauri-apps/api/path");
+    return await join(await videoDir(), "comicut_montagem.mp4");
+  } catch {
+    return "comicut_montagem.mp4";
+  }
+}
+
+/** AI proposes YouTube search queries for songs that fit the panels' mood. */
+export async function suggestSongQueries(
+  panels: Panel[],
+  config: VisionReviewConfig
+): Promise<string[]> {
+  if (!isTauri()) throw new Error("Saran lagu membutuhkan runtime Tauri.");
+  return await invoke<string[]>("suggest_songs", { panels, config });
 }

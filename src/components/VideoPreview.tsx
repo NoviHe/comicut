@@ -1,25 +1,23 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Play,
-  Pause,
   Download,
-  Smartphone,
-  Sparkles,
-  Zap,
   Loader2,
+  Pause,
+  Play,
+  Smartphone,
+  Volume2,
+  VolumeX,
+  Zap,
 } from "lucide-react";
-import {
-  BeatMap,
-  Panel,
-  RenderConfig,
-  TimelineClip,
-} from "../types/project";
-import { renderMontagemVideo } from "../services/tauriCommands";
+import { BeatMap, Panel, RenderConfig, TimelineClip } from "../types/project";
+import { defaultOutputPath, panelImageSrc, renderMontagemVideo } from "../services/tauriCommands";
+import { Playback } from "../services/usePlayback";
 
 interface VideoPreviewProps {
   panels: Panel[];
   beatMap: BeatMap | null;
   timeline: TimelineClip[];
+  playback: Playback;
   onStatusMessage: (msg: string) => void;
 }
 
@@ -27,53 +25,85 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   panels,
   beatMap,
   timeline,
+  playback,
   onStatusMessage,
 }) => {
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [outputPath, setOutputPath] = useState<string>(
-    "D:\\Laravel\\comicut\\output_montagem_reels.mp4"
-  );
+  const [outputPath, setOutputPath] = useState<string>("");
   const [isRendering, setIsRendering] = useState<boolean>(false);
+  const currentTime = playback.time;
+
+  useEffect(() => {
+    defaultOutputPath().then(setOutputPath);
+  }, []);
 
   const totalDuration =
     timeline.length > 0
       ? timeline[timeline.length - 1].endSec
       : beatMap?.durationSec || 9.0;
 
-  useEffect(() => {
-    if (!isPlaying) return;
-    const interval = setInterval(() => {
-      setCurrentTime((prev) => {
-        if (prev + 0.05 >= totalDuration) {
-          return 0;
-        }
-        return prev + 0.05;
-      });
-    }, 50);
-    return () => clearInterval(interval);
-  }, [isPlaying, totalDuration]);
-
   const activeClip =
-    timeline.find(
-      (c) => currentTime >= c.startSec && currentTime <= c.endSec
-    ) || timeline[0];
-
+    timeline.find((c) => currentTime >= c.startSec && currentTime < c.endSec) ||
+    timeline[0];
   const activePanel = activeClip
     ? panels.find((p) => p.id === activeClip.panelId) || panels[0]
     : panels[0];
+  const activeSrc = activePanel ? panelImageSrc(activePanel) : undefined;
+
+  const progress = activeClip
+    ? Math.min(
+        1,
+        Math.max(
+          0,
+          (currentTime - activeClip.startSec) /
+            Math.max(0.01, activeClip.endSec - activeClip.startSec)
+        )
+      )
+    : 0;
+
+  // Mirrors core/video_renderer/effects.rs (eye-friendly): squared ease-out impact, capped zoom/shake, soft flash.
+  const d0 = Math.max(0, 1 - progress / 0.55);
+  const decay = d0 * d0;
+  const clipSec = activeClip ? activeClip.endSec - activeClip.startSec : 0;
+  let scale = 1.03;
+  let shiftX = 0;
+  let shiftY = 0;
+  if (activeClip) {
+    const z = Math.min(0.08, Math.max(0, (activeClip.zoomScale || 1) - 1));
+    if (activeClip.effect === "SlowPushIn") scale = 1 + 0.05 * (progress * progress * (3 - 2 * progress));
+    else if (activeClip.effect === "ZoomPunch") scale = 1 + z * decay;
+    else if (activeClip.effect === "CameraShake") {
+      const w = 2 * Math.PI * 7;
+      const t = progress * clipSec;
+      const amp = Math.min(8, activeClip.shakeAmplitude) * decay * (270 / 1080);
+      shiftX = Math.sin(t * w) * amp;
+      shiftY = Math.cos(t * w * 0.8 + 1.3) * amp * 0.6;
+    }
+  }
+  const flash =
+    activeClip?.effect === "ImpactFlashWhite" || activeClip?.effect === "ImpactFlashRed"
+      ? (36 / 255) * decay
+      : 0;
+  const flashColor = activeClip?.effect === "ImpactFlashRed" ? "bg-red-500" : "bg-white";
+
+  // Long strip: fit width, scroll top to bottom (translate % is of the image's own height).
+  const panRatio =
+    activePanel && activePanel.bbox.height > 0
+      ? (16 / 9) * (activePanel.bbox.width / activePanel.bbox.height)
+      : 1;
+  const doPan =
+    !!activePanel &&
+    (activeClip?.effect === "VerticalPanScroll" || activePanel.isVerticalPan) &&
+    panRatio < 1;
 
   const isBeatFlash =
     beatMap?.beats.some(
-      (b) => b.isSubBassHit && Math.abs(b.timestampSec - currentTime) < 0.08
+      (b) => b.isSubBassHit && currentTime >= b.timestampSec && currentTime - b.timestampSec < 0.1
     ) ?? false;
 
   const handleRenderMp4 = async () => {
     if (timeline.length === 0 || !beatMap) return;
     setIsRendering(true);
-    onStatusMessage(
-      `Merender video 1080x1920 (60fps) dengan efek Montagem ke ${outputPath}...`
-    );
+    onStatusMessage(`Merender video 1080x1920 (60fps) ke ${outputPath}...`);
     try {
       const config: RenderConfig = {
         outputPath,
@@ -84,102 +114,100 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         vignetteStrength: 0.35,
         beatFlashEnabled: true,
       };
-      const savedPath = await renderMontagemVideo(
-        panels,
-        beatMap,
-        timeline,
-        config
-      );
-      onStatusMessage(`Render selesai! Video tersimpan di: ${savedPath}`);
+      const saved = await renderMontagemVideo(panels, beatMap, timeline, config);
+      onStatusMessage(`Render selesai! Video tersimpan di: ${saved}`);
     } catch (err: any) {
-      onStatusMessage(`Info Render: ${err?.message || String(err)}`);
+      onStatusMessage(`Render gagal: ${err?.message || String(err)}`);
     } finally {
       setIsRendering(false);
     }
   };
 
   return (
-    <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-4 flex flex-col justify-between h-full space-y-4">
+    <div className="card flex h-full flex-col gap-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <h2 className="card-title">
+          <span className="step">5</span>
           <Smartphone className="w-4 h-4 text-violet-400" />
-          <h2 className="text-sm font-semibold text-zinc-100">
-            5. Preview 9:16 (Reels / Shorts / TikTok)
-          </h2>
-        </div>
-        <span className="text-[11px] font-mono text-zinc-400">
-          1080×1920 • 60 FPS
-        </span>
+          Preview 9:16
+        </h2>
+        <span className="text-[11px] font-mono text-zinc-500">1080×1920 • 60 FPS</span>
       </div>
 
-      {/* 9:16 Vertical Canvas Simulator */}
-      <div className="flex-1 flex items-center justify-center py-1">
+      <div className="flex flex-1 items-center justify-center">
         <div
-          className={`relative w-[230px] h-[408px] rounded-2xl border-2 overflow-hidden flex flex-col justify-between p-3 transition-transform duration-75 ${
+          className={`relative aspect-[9/16] w-full max-w-[290px] overflow-hidden rounded-[28px] border-2 bg-black shadow-2xl transition-[border-color,box-shadow] duration-200 ${
             isBeatFlash
-              ? "border-rose-400 scale-[1.03] shadow-[0_0_30px_rgba(244,63,94,0.45)]"
-              : "border-zinc-700 bg-zinc-950"
+              ? "border-rose-400/70 shadow-[0_0_24px_rgba(244,63,94,0.25)]"
+              : "border-zinc-700 shadow-black/60"
           }`}
         >
-          {/* Impact Flash Overlay */}
-          {isBeatFlash && (
-            <div className="absolute inset-0 bg-white/25 pointer-events-none z-20 animate-pulse" />
+          {activeSrc ? (
+            <>
+              <img
+                src={activeSrc}
+                alt=""
+                className="absolute inset-0 h-full w-full scale-125 object-cover opacity-40 blur-2xl"
+              />
+              {doPan ? (
+                <img
+                  src={activeSrc}
+                  alt={`Panel ${activePanel!.index + 1}`}
+                  className="absolute left-0 top-0 h-auto w-full"
+                  style={{ transform: `translateY(${-progress * (1 - panRatio) * 100}%)` }}
+                />
+              ) : (
+                <img
+                  src={activeSrc}
+                  alt={`Panel ${activePanel!.index + 1}`}
+                  className="absolute inset-0 h-full w-full object-contain"
+                  style={{
+                    transform: `translate(${shiftX}px, ${shiftY}px) scale(${scale})`,
+                  }}
+                />
+              )}
+            </>
+          ) : (
+            <div className="absolute inset-0 grid place-items-center p-6 text-center text-xs text-zinc-500">
+              {activePanel
+                ? activePanel.caption || `Panel #${activePanel.index + 1}`
+                : "Muat panel & lagu, lalu sinkronkan timeline untuk melihat preview"}
+            </div>
           )}
 
-          {/* Top HUD inside 9:16 frame */}
-          <div className="relative z-10 flex items-center justify-between text-[10px]">
-            <span className="bg-black/70 backdrop-blur px-2 py-0.5 rounded-full text-zinc-200 font-medium border border-white/10">
+          {flash > 0 && (
+            <div
+              className={`pointer-events-none absolute inset-0 ${flashColor}`}
+              style={{ opacity: flash }}
+            />
+          )}
+
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-3 text-[10px]">
+            <span className="rounded-full border border-white/10 bg-black/60 px-2 py-0.5 font-medium text-zinc-200 backdrop-blur">
               {activeClip ? activeClip.effect : "Ready"}
             </span>
             {isBeatFlash && (
-              <span className="bg-rose-600 text-white font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                <Zap className="w-2.5 h-2.5" />
-                BASS HIT
+              <span className="flex items-center gap-0.5 rounded-full bg-rose-600 px-2 py-0.5 font-bold text-white">
+                <Zap className="h-2.5 w-2.5" />
+                BEAT
               </span>
             )}
           </div>
 
-          {/* Center Panel Content */}
-          <div className="relative z-10 my-auto bg-gradient-to-b from-zinc-900/95 to-zinc-950/95 border border-zinc-700/80 rounded-xl p-4 text-center shadow-inner">
-            {activePanel ? (
-              <>
-                <span className="text-[10px] uppercase tracking-wider text-violet-400 font-bold">
-                  Panel #{activePanel.index + 1} • {activePanel.role}
-                </span>
-                <p className="text-xs font-semibold text-zinc-100 mt-1.5">
-                  {activePanel.caption || activePanel.imagePath}
-                </p>
-                <div className="mt-3 text-[10px] font-mono text-zinc-400">
-                  {activePanel.bbox.width}×{activePanel.bbox.height}px
-                </div>
-                {activePanel.isVerticalPan && (
-                  <div className="mt-2 inline-block text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded">
-                    Vertical Camera Scroll Active
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-xs text-zinc-500 py-8">
-                Muat Panel &amp; Lagu untuk melihat simulasi gerakan kamera
-                Montagem
-              </div>
-            )}
-          </div>
-
-          {/* Bottom Audio Caption Bar */}
-          <div className="relative z-10 space-y-1.5">
-            <div className="flex items-center justify-between text-[10px] text-zinc-300 font-mono">
+          <div className="absolute inset-x-0 bottom-0 z-10 space-y-1.5 bg-gradient-to-t from-black/80 to-transparent p-3 pt-8">
+            <div className="flex justify-between font-mono text-[10px] text-zinc-300">
               <span>{currentTime.toFixed(2)}s</span>
               <span>{totalDuration.toFixed(2)}s</span>
             </div>
-            <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div
+              className="h-1.5 w-full cursor-pointer overflow-hidden rounded-full bg-white/15"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                playback.seek(((e.clientX - r.left) / r.width) * totalDuration);
+              }}
+            >
               <div
-                style={{
-                  width: `${Math.min(
-                    100,
-                    (currentTime / Math.max(0.1, totalDuration)) * 100
-                  )}%`,
-                }}
+                style={{ width: `${Math.min(100, (currentTime / Math.max(0.1, totalDuration)) * 100)}%` }}
                 className="h-full bg-gradient-to-r from-violet-500 to-rose-500"
               />
             </div>
@@ -187,35 +215,33 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         </div>
       </div>
 
-      {/* Controls & Export MP4 */}
-      <div className="space-y-2.5 pt-2 border-t border-zinc-800">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsPlaying(!isPlaying)}
-            className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-semibold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition"
-          >
-            {isPlaying ? (
-              <>
-                <Pause className="w-3.5 h-3.5" /> Pause Preview
-              </>
-            ) : (
-              <>
-                <Play className="w-3.5 h-3.5" /> Play Beat Sync Preview
-              </>
-            )}
-          </button>
-        </div>
+      <div className="space-y-2.5 border-t border-white/[0.06] pt-3">
+        <button type="button" onClick={playback.toggle} className="btn-ghost w-full">
+          {playback.playing ? (
+            <>
+              <Pause className="w-3.5 h-3.5" /> Pause
+            </>
+          ) : (
+            <>
+              <Play className="w-3.5 h-3.5" /> Putar dengan Suara
+            </>
+          )}
+          {playback.hasAudio ? (
+            <Volume2 className="ml-auto w-3.5 h-3.5 text-emerald-400" />
+          ) : (
+            <VolumeX className="ml-auto w-3.5 h-3.5 text-zinc-500" />
+          )}
+        </button>
 
         <div>
-          <label className="block text-[10px] text-zinc-400 mb-1">
-            Lokasi Output Render MP4 (FFmpeg H.264 60fps)
+          <label className="mb-1 block text-[10px] text-zinc-500">
+            Lokasi output MP4 (H.264 60fps)
           </label>
           <input
             type="text"
             value={outputPath}
             onChange={(e) => setOutputPath(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-mono"
+            className="field font-mono"
           />
         </div>
 
@@ -223,17 +249,17 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           type="button"
           disabled={timeline.length === 0 || isRendering}
           onClick={handleRenderMp4}
-          className="w-full bg-gradient-to-r from-violet-600 to-rose-600 hover:from-violet-500 hover:to-rose-500 disabled:opacity-40 text-white text-xs font-bold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg shadow-rose-950/40"
+          className="btn-primary w-full py-2.5"
         >
           {isRendering ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
-              Merender Frame ke FFmpeg...
+              Merender...
             </>
           ) : (
             <>
               <Download className="w-4 h-4" />
-              Render Video Reels / Shorts (.MP4)
+              Render Video (.MP4)
             </>
           )}
         </button>

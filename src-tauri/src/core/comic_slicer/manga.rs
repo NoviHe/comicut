@@ -7,14 +7,17 @@ use crate::core::comic_slicer::heuristics::analyze_panel_metrics;
 use crate::models::panel::{BoundingBox, Panel};
 
 /// Memotong halaman Manga (RTL Jepang atau LTR Komik) menjadi panel-panel terurut.
-pub fn slice_manga_pages(image_paths: &[PathBuf], right_to_left: bool) -> Result<Vec<Panel>> {
+pub fn slice_manga_pages(image_paths: &[PathBuf], right_to_left: bool, credit: &[bool]) -> Result<Vec<Panel>> {
     let out_dir = std::env::temp_dir().join("comicut_cache").join("sliced_manga");
     fs::create_dir_all(&out_dir)?;
 
     let mut panels = Vec::new();
     let mut panel_counter = 0usize;
 
-    for path in image_paths {
+    for (page_idx, path) in image_paths.iter().enumerate() {
+        if credit.get(page_idx).copied().unwrap_or(false) {
+            continue; // scanlator credit / ad page
+        }
         let Ok(img) = image::open(path) else {
             continue;
         };
@@ -33,10 +36,13 @@ pub fn slice_manga_pages(image_paths: &[PathBuf], right_to_left: bool) -> Result
         for (y0, y1) in row_heights {
             let h = y1.saturating_sub(y0);
             let cropped = img.crop_imm(0, y0, width, h);
+            let metrics = analyze_panel_metrics(&cropped, panel_counter, image_paths.len() * 2);
+            if metrics.is_blank {
+                println!("[slicer] skipped blank/text-only segment (page {}, y {}..{})", page_idx + 1, y0, y1);
+                continue;
+            }
             let out_path = out_dir.join(format!("manga_panel_{:03}.png", panel_counter + 1));
             let _ = cropped.save(&out_path);
-
-            let metrics = analyze_panel_metrics(&cropped, panel_counter, image_paths.len() * 2);
             let direction_tag = if right_to_left { "RTL" } else { "LTR" };
 
             panels.push(Panel {

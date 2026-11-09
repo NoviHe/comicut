@@ -41,7 +41,7 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
   const [comicFormat, setComicFormat] =
     useState<ComicFormat>("WebtoonVertical");
   const [customSelector, setCustomSelector] = useState<string>(
-    "#readerarea img, .reading-content img, .chapter-area img"
+    '#readerarea img, .reading-content img, .chapter-area img, img[class*="chapterPage"]'
   );
   const [customReferer, setCustomReferer] = useState<string>(
     "https://voratoon.web.id/"
@@ -256,14 +256,13 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
   };
 
   return (
-    <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-4 space-y-4">
+    <div className="card space-y-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <h2 className="card-title">
+          <span className="step">1</span>
           <Layers className="w-4 h-4 text-violet-400" />
-          <h2 className="text-sm font-semibold text-zinc-100">
-            1. Sumber Komik (URL Multi-Platform / Lokal)
-          </h2>
-        </div>
+          Sumber Komik
+        </h2>
         <div className="flex bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-xs">
           <button
             onClick={() => setMode("url")}
@@ -339,7 +338,7 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
                 value={url}
                 onChange={(e) => handleUrlChange(e.target.value)}
                 placeholder="Contoh: https://voratoon.web.id/judul-chapter-1/"
-                className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-500"
+                className="field flex-1"
               />
             </div>
             {/* Quick domain chips */}
@@ -414,7 +413,7 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
             value={localFolderPath}
             onChange={(e) => setLocalFolderPath(e.target.value)}
             placeholder="D:\Comics\SoloLeveling\Chapter_01"
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-violet-500"
+            className="field"
           />
         </div>
       )}
@@ -467,7 +466,7 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
           type="button"
           disabled={isLoading}
           onClick={mode === "url" ? handleScrapeUrl : handleImportLocal}
-          className="flex-1 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg shadow-violet-950/50"
+          className="flex-1 btn-primary flex-1 py-2.5 flex items-center justify-center gap-2 transition shadow-lg shadow-violet-950/50"
         >
           {isLoading ? (
             <>
@@ -488,7 +487,7 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
           type="button"
           onClick={handleLoadSimulationPanels}
           title="Muat contoh panel manhwa VoraToon untuk mencoba timeline & efek Montagem"
-          className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-1.5 transition"
+          className="btn-ghost flex items-center gap-1.5 transition"
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
           Simulasi

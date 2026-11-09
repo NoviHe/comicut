@@ -18,3 +18,14 @@ pub async fn render_montagem_video(
 ) -> Result<String, String> {
     render_timeline_to_mp4(&panels, &beat_map, &timeline, &config).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn ai_direct_timeline(
+    panels: Vec<Panel>,
+    beat_map: BeatMap,
+    config: crate::models::panel::VisionReviewConfig,
+) -> Result<Vec<TimelineClip>, String> {
+    crate::core::video_renderer::ai_director::direct_with_ai(&panels, &beat_map, &config)
+        .await
+        .map_err(|e| e.to_string())
+}

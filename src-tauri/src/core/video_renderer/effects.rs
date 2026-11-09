@@ -16,19 +16,29 @@ pub fn compose_vertical_frame(
         return canvas;
     }
 
-    // Decay kurva eksponensial untuk efek hentakan bass di awal klip
-    let beat_decay = (1.0 - progress_0_to_1 * 3.2).clamp(0.0, 1.0);
+    // Eye-friendly motion (keep in sync with src/components/VideoPreview.tsx):
+    // - impact eases out over the first 55% of the cut (squared), never a hard snap back;
+    // - zoom punch capped at +8%, shake capped at 8px of 1080 and at ~7Hz (no strobing jitter);
+    // - base zoom 1.03 on shake/flash so moving the frame never reveals the dark edge.
+    let beat_decay = {
+        let d = (1.0 - progress_0_to_1 / 0.55).clamp(0.0, 1.0);
+        d * d
+    };
+    let t = progress_0_to_1 * clip.duration_sec;
 
     let zoom = match clip.effect {
-        EffectType::ZoomPunch => 1.0 + (clip.zoom_scale - 1.0) * beat_decay,
-        EffectType::SlowPushIn => 1.0 + 0.08 * progress_0_to_1,
-        _ => 1.04,
+        EffectType::ZoomPunch => 1.0 + (clip.zoom_scale - 1.0).clamp(0.0, 0.08) * beat_decay,
+        EffectType::SlowPushIn => {
+            let s = progress_0_to_1;
+            1.0 + 0.05 * (s * s * (3.0 - 2.0 * s)) // smoothstep ease-in-out
+        }
+        _ => 1.03,
     };
 
-    let (shake_x, shake_y) = if clip.effect == EffectType::CameraShake && beat_decay > 0.0 {
-        let sx = ((progress_0_to_1 * 90.0).sin() * clip.shake_amplitude * beat_decay) as i32;
-        let sy = ((progress_0_to_1 * 120.0).cos() * clip.shake_amplitude * beat_decay) as i32;
-        (sx, sy)
+    let (shake_x, shake_y) = if clip.effect == EffectType::CameraShake {
+        let amp = clip.shake_amplitude.clamp(0.0, 8.0) * beat_decay;
+        let w = 2.0 * std::f32::consts::PI * 7.0;
+        ((((t * w).sin()) * amp) as i32, (((t * w * 0.8 + 1.3).cos()) * amp * 0.6) as i32)
     } else {
         (0, 0)
     };
@@ -55,11 +65,13 @@ pub fn compose_vertical_frame(
     let x_offset: i32 = (out_w as i32 - target_w as i32) / 2 + shake_x;
     let final_y_offset = y_offset + shake_y;
 
-    let flash_boost: u8 = if clip.effect == EffectType::ImpactFlashWhite && beat_decay > 0.55 {
-        ((beat_decay - 0.55) * 140.0) as u8
-    } else {
-        0
+    // Soft flash: fades out smoothly and peaks at ~14% brightness (was a hard bright pop);
+    // photosensitivity guideline: avoid large bright flashes.
+    let flash_boost: u8 = match clip.effect {
+        EffectType::ImpactFlashWhite | EffectType::ImpactFlashRed => (36.0 * beat_decay) as u8,
+        _ => 0,
     };
+    let red_only = clip.effect == EffectType::ImpactFlashRed;
 
     for cy in 0..out_h {
         let sy = cy as i32 - final_y_offset;
@@ -73,8 +85,8 @@ pub fn compose_vertical_frame(
             }
             let p = resized.get_pixel(sx as u32, sy as u32);
             let r = p[0].saturating_add(flash_boost);
-            let g = p[1].saturating_add(flash_boost);
-            let b = p[2].saturating_add(flash_boost);
+            let g = if red_only { p[1] } else { p[1].saturating_add(flash_boost) };
+            let b = if red_only { p[2] } else { p[2].saturating_add(flash_boost) };
             canvas.put_pixel(cx, cy, Rgb([r, g, b]));
         }
     }

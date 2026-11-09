@@ -7,15 +7,25 @@ import {
   ArrowUpDown,
   Cpu,
   Sparkles,
+  Settings,
 } from "lucide-react";
-import { Panel, PanelRole, VisionReviewConfig } from "../types/project";
-import { reviewEpicPanels } from "../services/tauriCommands";
+import { Panel, PanelRole } from "../types/project";
+import {
+  AiSettings,
+  defaultModel,
+  toReviewConfig,
+} from "../services/aiSettings";
+import { panelImageSrc, reviewEpicPanels } from "../services/tauriCommands";
 
 interface PanelGalleryProps {
   panels: Panel[];
   chapterTitle: string;
   onUpdatePanels: (panels: Panel[]) => void;
   onStatusMessage: (msg: string) => void;
+  ai: AiSettings;
+  /** How many panels the song can show (from the beat map); drives auto-pick. */
+  targetPanels: number;
+  onOpenSettings: () => void;
 }
 
 const ROLE_BADGE_STYLES: Record<PanelRole, string> = {
@@ -32,10 +42,10 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
   chapterTitle,
   onUpdatePanels,
   onStatusMessage,
+  ai,
+  targetPanels,
+  onOpenSettings,
 }) => {
-  const [provider, setProvider] =
-    useState<VisionReviewConfig["provider"]>("HeuristicOnly");
-  const [apiKey, setApiKey] = useState<string>("");
   const [isReviewing, setIsReviewing] = useState<boolean>(false);
 
   const toggleSelect = (id: string) => {
@@ -53,17 +63,7 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
     setIsReviewing(true);
     onStatusMessage("Menganalisis panel epic (Heuristik Visual + AI Reviewer)...");
     try {
-      const reviewed = await reviewEpicPanels(panels, {
-        provider,
-        apiKey: apiKey.trim() || undefined,
-        modelName:
-          provider === "Gemini"
-            ? "gemini-2.5-flash"
-            : provider === "OpenAI"
-            ? "gpt-4o-mini"
-            : "llava",
-        maxPanelsToSelect: 10,
-      });
+      const reviewed = await reviewEpicPanels(panels, toReviewConfig(ai, targetPanels));
       onUpdatePanels(reviewed);
       onStatusMessage(
         `Review selesai! ${
@@ -80,15 +80,14 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
   const selectedCount = panels.filter((p) => p.selected).length;
 
   return (
-    <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl p-4 flex flex-col h-full">
+    <div className="card flex flex-col h-full">
       <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-zinc-800">
         <div>
-          <div className="flex items-center gap-2">
+          <h2 className="card-title">
+            <span className="step">2</span>
             <Flame className="w-4 h-4 text-rose-400" />
-            <h2 className="text-sm font-semibold text-zinc-100">
-              2. Smart Panel Reviewer ({selectedCount}/{panels.length} Terpilih)
-            </h2>
-          </div>
+            Panel Epic ({selectedCount}/{panels.length} terpilih)
+          </h2>
           <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
             {chapterTitle || "Belum ada chapter yang dimuat"}
           </p>
@@ -96,30 +95,17 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
 
         {/* AI / Heuristic Reviewer Bar */}
         <div className="flex items-center gap-2">
-          <select
-            value={provider}
-            onChange={(e) =>
-              setProvider(e.target.value as VisionReviewConfig["provider"])
-            }
-            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            title="Pengaturan AI Vision"
+            className="bg-zinc-950 border border-zinc-800 hover:border-violet-500/60 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 flex items-center gap-1.5 transition"
           >
-            <option value="HeuristicOnly">
-              Rust Local Heuristics (Edge + Aspect + Contrast)
-            </option>
-            <option value="Gemini">Hybrid + Gemini 2.5 Flash Vision</option>
-            <option value="OpenAI">Hybrid + OpenAI GPT-4o Vision</option>
-            <option value="Ollama">Hybrid + Ollama Local Vision</option>
-          </select>
-
-          {provider !== "HeuristicOnly" && provider !== "Ollama" && (
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="API Key..."
-              className="w-28 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
-            />
-          )}
+            <Settings className="w-3.5 h-3.5" />
+            {ai.provider === "HeuristicOnly"
+              ? "Rust Local Heuristics"
+              : `AI: ${ai.modelName || defaultModel(ai.provider)}`}
+          </button>
 
           <button
             type="button"
@@ -147,7 +133,7 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-3 overflow-y-auto pr-1 max-h-[360px]">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mt-3 overflow-y-auto pr-1 max-h-[520px]">
           {panels.map((panel) => {
             const epicPercent = Math.round(
               (panel.aiEpicScore ?? panel.heuristicScore) * 100
@@ -182,19 +168,30 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
                   </div>
 
                   {/* Visual Box / Placeholder Representation */}
-                  <div className="h-24 rounded bg-gradient-to-br from-zinc-900 via-zinc-950 to-violet-950/30 border border-zinc-800/80 flex flex-col items-center justify-center p-2 text-center relative overflow-hidden">
+                  <div className="h-44 rounded bg-gradient-to-br from-zinc-900 via-zinc-950 to-violet-950/30 border border-zinc-800/80 flex flex-col items-center justify-center p-2 text-center relative overflow-hidden">
                     {panel.isVerticalPan && (
-                      <span className="absolute top-1 right-1 text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                      <span className="absolute z-10 top-1 right-1 text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 py-0.5 rounded flex items-center gap-0.5">
                         <ArrowUpDown className="w-2.5 h-2.5" />
                         Long Strip
                       </span>
                     )}
-                    <Eye className="w-4 h-4 text-zinc-600 mb-1" />
-                    <p className="text-[10px] text-zinc-300 line-clamp-2">
-                      {panel.caption ||
-                        `${panel.bbox.width}x${panel.bbox.height}px`}
-                    </p>
-                    <span className="text-[9px] text-zinc-500 font-mono mt-0.5">
+                    {panelImageSrc(panel) ? (
+                      <img
+                        src={panelImageSrc(panel)}
+                        alt={`Panel ${panel.index + 1}`}
+                        loading="lazy"
+                        className="absolute inset-0 w-full h-full object-cover object-top"
+                      />
+                    ) : (
+                      <>
+                        <Eye className="w-4 h-4 text-zinc-600 mb-1" />
+                        <p className="text-[10px] text-zinc-300 line-clamp-2">
+                          {panel.caption ||
+                            `${panel.bbox.width}x${panel.bbox.height}px`}
+                        </p>
+                      </>
+                    )}
+                    <span className="absolute bottom-1 left-1 text-[9px] text-zinc-300 font-mono bg-black/60 px-1 rounded">
                       {panel.bbox.width}×{panel.bbox.height} • Edge{" "}
                       {Math.round(panel.edgeDensity * 100)}%
                     </span>
