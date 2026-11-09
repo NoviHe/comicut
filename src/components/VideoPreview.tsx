@@ -19,6 +19,7 @@ interface VideoPreviewProps {
   timeline: TimelineClip[];
   playback: Playback;
   onStatusMessage: (msg: string) => void;
+  onRenderSuccess?: (outputPath: string) => void;
 }
 
 export const VideoPreview: React.FC<VideoPreviewProps> = ({
@@ -27,6 +28,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   timeline,
   playback,
   onStatusMessage,
+  onRenderSuccess,
 }) => {
   const [outputPath, setOutputPath] = useState<string>("");
   const [isRendering, setIsRendering] = useState<boolean>(false);
@@ -116,6 +118,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
       };
       const saved = await renderMontagemVideo(panels, beatMap, timeline, config);
       onStatusMessage(`Render selesai! Video tersimpan di: ${saved}`);
+      onRenderSuccess?.(saved);
     } catch (err: any) {
       onStatusMessage(`Render gagal: ${err?.message || String(err)}`);
     } finally {

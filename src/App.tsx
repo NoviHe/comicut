@@ -8,6 +8,16 @@ import { TimelineEditor } from "./components/TimelineEditor";
 import { VideoPreview } from "./components/VideoPreview";
 import { DependencyStatus } from "./components/DependencyStatus";
 import { AiSettingsModal } from "./components/AiSettingsModal";
+import { NavTab, SidebarNav } from "./components/SidebarNav";
+import { TopBar } from "./components/TopBar";
+import { ProjectsManager } from "./components/ProjectsManager";
+import { SettingsView } from "./components/SettingsView";
+import {
+  buildProjectSnapshot,
+  loadSavedProjects,
+  SavedProject,
+  saveProject,
+} from "./services/projectStorage";
 import { loadAiSettings, toReviewConfig } from "./services/aiSettings";
 import { applyAdjust, BeatAdjust, localSongQueries, NO_ADJUST, songFit, targetPanelCount } from "./services/beatAdjust";
 import { usePlayback } from "./services/usePlayback";
@@ -62,6 +72,9 @@ export function App() {
   const [timeline, setTimeline] = useState<TimelineClip[]>([]);
   const [ai, setAi] = useState(loadAiSettings);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeNav, setActiveNav] = useState<NavTab>("home");
+  const [currentProjectId, setCurrentProjectId] = useState<string | undefined>();
+  const [savedProjects, setSavedProjects] = useState<SavedProject[]>(() => loadSavedProjects());
   const [statusMessage, setStatusMessage] = useState<string>(
     "Siap! Mulai dari langkah 1: pilih sumber komik."
   );
@@ -187,9 +200,78 @@ export function App() {
       } else {
         setStatusMessage(`Auto selesai: ${chosen.length} panel, ${clips.length} potongan. Putar preview lalu render.`);
       }
+
+      // Auto-save to project history
+      try {
+        const snap = buildProjectSnapshot({
+          id: currentProjectId,
+          chapterTitle: scraped.chapterTitle,
+          panels: list,
+          rawBeatMap: bm,
+          adjust: NO_ADJUST,
+          timeline: clips,
+        });
+        saveProject(snap);
+        setCurrentProjectId(snap.id);
+        setSavedProjects(loadSavedProjects());
+      } catch (err) {
+        console.warn("Auto-save project snapshot failed:", err);
+      }
     } finally {
       autoRunning.current = false;
     }
+  };
+
+  const handleOpenProject = (proj: SavedProject) => {
+    setCurrentProjectId(proj.id);
+    setPanels(proj.panels);
+    setChapterTitle(proj.chapterTitle);
+    setRawBeatMap(proj.rawBeatMap);
+    setAdjust(proj.adjust);
+    setTimeline(proj.timeline);
+    setActiveNav("home");
+    setStatusMessage(`Proyek "${proj.title}" berhasil dimuat. Siap diedit.`);
+  };
+
+  const hasActiveSession =
+    panels.length > 0 || timeline.length > 0 || !!rawBeatMap || !!currentProjectId;
+
+  const handleNewSession = () => {
+    if (playback.playing) {
+      playback.toggle();
+    }
+    playback.seek(0);
+    setCurrentProjectId(undefined);
+    setPanels([]);
+    setChapterTitle("");
+    setRawBeatMap(null);
+    setAdjust(NO_ADJUST);
+    setTimeline([]);
+    setActiveNav("home");
+    setStatusMessage("Sesi baru dimulai. Silakan pilih sumber komik untuk memulai.");
+  };
+
+  const handleNewProject = () => {
+    handleNewSession();
+  };
+
+  const handleSaveCurrentProject = () => {
+    if (panels.length === 0 && timeline.length === 0) {
+      setStatusMessage("Belum ada panel atau timeline untuk disimpan.");
+      return;
+    }
+    const snap = buildProjectSnapshot({
+      id: currentProjectId,
+      chapterTitle,
+      panels,
+      rawBeatMap,
+      adjust,
+      timeline,
+    });
+    saveProject(snap);
+    setCurrentProjectId(snap.id);
+    setSavedProjects(loadSavedProjects());
+    setStatusMessage(`Proyek "${snap.title}" berhasil disimpan ke riwayat.`);
   };
 
   // Keep the timeline in step with beat adjustments / panel selection once one exists.
@@ -200,105 +282,138 @@ export function App() {
   }, [beatMap]);
 
   return (
-    <div className="flex h-screen select-none flex-col bg-zinc-950 text-zinc-100">
+    <div className="flex h-screen select-none flex-col overflow-hidden bg-zinc-950 text-zinc-100">
       <div className="pointer-events-none fixed inset-0 -z-0 bg-[radial-gradient(ellipse_at_top_left,rgba(124,58,237,0.14),transparent_55%),radial-gradient(ellipse_at_bottom_right,rgba(236,72,153,0.08),transparent_50%)]" />
 
-      <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-white/[0.06] bg-zinc-950/70 px-5 py-2.5 backdrop-blur">
-        <div className="flex items-center gap-3">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-950/60">
-            <Scissors className="h-4 w-4 text-white" />
-          </div>
-          <div>
-            <h1 className="text-sm font-bold tracking-tight text-white">ComiCut Studio</h1>
-            <p className="text-[11px] text-zinc-500">Webtoon / Manga → Montagem Reels &amp; Shorts</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowSettings(true)}
-          className="btn-ghost"
-          title="Pengaturan AI Vision"
-        >
-          <Settings className="h-3.5 w-3.5" />
-          Pengaturan
-        </button>
-      </header>
+      {/* Integrated Custom Frameless Titlebar */}
+      <TopBar
+        canGoBack={activeNav !== "home"}
+        onBack={() => setActiveNav("home")}
+        onOpenSettings={() => setShowSettings(true)}
+        hasActiveSession={hasActiveSession}
+        onNewSession={handleNewSession}
+      />
 
-      <main className="relative z-10 grid flex-1 grid-cols-12 gap-4 overflow-y-auto p-4">
-        <div className="col-span-12 flex flex-col gap-4 xl:col-span-8 2xl:col-span-9">
-          <AutoPilot ai={ai} onRun={runAuto} onOpenSettings={() => setShowSettings(true)} />
-          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
-            <div className="2xl:col-span-5">
-              <ChapterImporter
-                onPanelsLoaded={(p, title) => {
-                  setPanels(p);
-                  setChapterTitle(title);
-                  setTimeline([]);
-                }}
-                onStatusMessage={setStatusMessage}
-              />
-            </div>
-            <div className="2xl:col-span-7">
-              <PanelGallery
-                panels={panels}
-                chapterTitle={chapterTitle}
-                onUpdatePanels={setPanels}
-                onStatusMessage={setStatusMessage}
-                ai={ai}
-                targetPanels={targetPanels}
-                onOpenSettings={() => setShowSettings(true)}
-              />
-            </div>
-          </div>
+      {/* App Body: Left Sidebar + Content Area */}
+      <div className="relative z-10 flex min-h-0 flex-1 overflow-hidden">
+        <SidebarNav active={activeNav} onSelect={setActiveNav} />
 
-          <AudioWaveform
-            beatMap={rawBeatMap ? beatMap : null}
-            adjust={adjust}
-            onAdjust={setAdjust}
-            playback={playback}
-            onBeatMapLoaded={(bm) => {
-              setRawBeatMap(bm);
-              setAdjust(NO_ADJUST);
-              void sync(bm, selected);
-            }}
-            onStatusMessage={setStatusMessage}
-          />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {activeNav === "home" ? (
+            <main className="relative z-10 grid flex-1 grid-cols-12 gap-4 overflow-y-auto p-4">
+              <div className="col-span-12 flex flex-col gap-4 xl:col-span-8 2xl:col-span-9">
+                <AutoPilot ai={ai} onRun={runAuto} onOpenSettings={() => setShowSettings(true)} />
+                <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
+                  <div className="2xl:col-span-5">
+                    <ChapterImporter
+                      onPanelsLoaded={(p, title) => {
+                        setPanels(p);
+                        setChapterTitle(title);
+                        setTimeline([]);
+                      }}
+                      onStatusMessage={setStatusMessage}
+                    />
+                  </div>
+                  <div className="2xl:col-span-7">
+                    <PanelGallery
+                      panels={panels}
+                      chapterTitle={chapterTitle}
+                      onUpdatePanels={setPanels}
+                      onStatusMessage={setStatusMessage}
+                      ai={ai}
+                      targetPanels={targetPanels}
+                      onOpenSettings={() => setShowSettings(true)}
+                    />
+                  </div>
+                </div>
 
-          <TimelineEditor
-            timeline={timeline}
-            panels={panels}
-            beatMap={beatMap}
-            currentTime={playback.time}
-            onSeek={playback.seek}
-            onGenerateTimeline={async () => {
-              if (!beatMap) return;
-              await sync(beatMap, selected, true);
-            }}
-          />
-          <DependencyStatus onStatusMessage={setStatusMessage} />
-        </div>
+                <AudioWaveform
+                  beatMap={rawBeatMap ? beatMap : null}
+                  adjust={adjust}
+                  onAdjust={setAdjust}
+                  playback={playback}
+                  onBeatMapLoaded={(bm) => {
+                    setRawBeatMap(bm);
+                    setAdjust(NO_ADJUST);
+                    void sync(bm, selected);
+                  }}
+                  onStatusMessage={setStatusMessage}
+                />
 
-        <div className="col-span-12 xl:col-span-4 2xl:col-span-3">
-          <div className="xl:sticky xl:top-0">
-            <VideoPreview
-              panels={panels}
-              beatMap={beatMap}
-              timeline={timeline}
-              playback={playback}
+                <TimelineEditor
+                  timeline={timeline}
+                  panels={panels}
+                  beatMap={beatMap}
+                  currentTime={playback.time}
+                  onSeek={playback.seek}
+                  onGenerateTimeline={async () => {
+                    if (!beatMap) return;
+                    await sync(beatMap, selected, true);
+                  }}
+                />
+                <DependencyStatus onStatusMessage={setStatusMessage} />
+              </div>
+
+              <div className="col-span-12 xl:col-span-4 2xl:col-span-3">
+                <div className="xl:sticky xl:top-0">
+                  <VideoPreview
+                    panels={panels}
+                    beatMap={beatMap}
+                    timeline={timeline}
+                    playback={playback}
+                    onStatusMessage={setStatusMessage}
+                    onRenderSuccess={(out) => {
+                      if (panels.length > 0) {
+                        const snap = buildProjectSnapshot({
+                          id: currentProjectId,
+                          chapterTitle,
+                          panels,
+                          rawBeatMap,
+                          adjust,
+                          timeline,
+                          lastOutputPath: out,
+                        });
+                        saveProject(snap);
+                        setCurrentProjectId(snap.id);
+                        setSavedProjects(loadSavedProjects());
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </main>
+          ) : activeNav === "projects" ? (
+            <ProjectsManager
+              projects={savedProjects}
+              currentProjectId={currentProjectId}
+              hasCurrentWork={panels.length > 0 || timeline.length > 0}
+              onRefreshProjects={() => setSavedProjects(loadSavedProjects())}
+              onOpenProject={handleOpenProject}
+              onNewProject={handleNewProject}
+              onSaveCurrentProject={handleSaveCurrentProject}
               onStatusMessage={setStatusMessage}
             />
-          </div>
+          ) : activeNav === "settings" ? (
+            <SettingsView />
+          ) : (
+            <main className="relative z-10 flex flex-1 items-center justify-center p-6">
+              <div className="card flex max-w-md flex-col items-center gap-2 px-8 py-10 text-center">
+                <h2 className="text-sm font-semibold capitalize text-zinc-100">{activeNav}</h2>
+                <p className="text-xs text-zinc-500">Menu ini masih kosong.</p>
+              </div>
+            </main>
+          )}
+
+          <footer className="relative z-10 flex h-8 shrink-0 items-center gap-2 border-t border-white/[0.06] bg-zinc-950/80 px-4 text-[11px] text-zinc-400">
+            <Terminal className="h-3.5 w-3.5 shrink-0 text-violet-400" />
+            <span className="truncate">{statusMessage}</span>
+          </footer>
         </div>
-      </main>
+      </div>
 
       {showSettings && (
         <AiSettingsModal settings={ai} onSave={setAi} onClose={() => setShowSettings(false)} />
       )}
-
-      <footer className="relative z-10 flex h-8 shrink-0 items-center gap-2 border-t border-white/[0.06] bg-zinc-950/80 px-4 text-[11px] text-zinc-400">
-        <Terminal className="h-3.5 w-3.5 shrink-0 text-violet-400" />
-        <span className="truncate">{statusMessage}</span>
-      </footer>
     </div>
   );
 }

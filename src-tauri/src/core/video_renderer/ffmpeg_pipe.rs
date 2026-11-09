@@ -1,15 +1,20 @@
 use anyhow::{anyhow, Result};
-use std::collections::HashMap;
+use image::RgbImage;
+use rayon::prelude::*;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::time::Instant;
 
-use crate::core::video_renderer::effects::compose_vertical_frame;
+use crate::commands::deps_cmd::tool;
+use crate::core::video_renderer::effects::render_clip_frames;
 use crate::core::video_renderer::encoder::{self, Encoder};
 use crate::models::audio::BeatMap;
 use crate::models::panel::Panel;
 use crate::models::timeline::{RenderConfig, TimelineClip};
 
-/// Merender frame demi frame di Rust lalu mengirimkannya via stdin pipe ke FFmpeg
+/// Merender frame demi frame di Rust secara paralel lalu mengirimkannya via stdin pipe ke FFmpeg
 /// untuk menghasilkan video MP4 9:16 (1080x1920) 60fps lengkap dengan musik Montagem.
 pub fn render_timeline_to_mp4(
     panels: &[Panel],
@@ -21,21 +26,24 @@ pub fn render_timeline_to_mp4(
         return Err(anyhow!("Timeline masih kosong. Sinkronkan panel ke beat terlebih dahulu."));
     }
 
-    let mut loaded_images = HashMap::new();
-    for p in panels {
-        if let Ok(img) = image::open(&p.image_path) {
-            loaded_images.insert(p.id.clone(), img);
-        }
-    }
+    let t0 = Instant::now();
 
     // Cek ketersediaan binary ffmpeg di sistem
-    let ffmpeg_check = Command::new("ffmpeg").arg("-version").output();
+    let ffmpeg_check = Command::new(tool("ffmpeg")).arg("-version").output();
     if ffmpeg_check.is_err() {
         return Err(anyhow!(
-            "Binary FFmpeg belum ditemukan di PATH sistem. Pasang FFmpeg (atau taruh di src-tauri/binaries/) untuk mengekspor file MP4 ke {}",
+            "FFmpeg tidak ditemukan (bawaan aplikasi hilang?). Pasang ulang lewat panel Status Dependensi untuk mengekspor MP4 ke {}",
             config.output_path
         ));
     }
+
+    // Hanya muat gambar panel yang benar-benar dipakai di timeline, secara paralel.
+    let used_ids: HashSet<&str> = timeline.iter().map(|c| c.panel_id.as_str()).collect();
+    let loaded_images: HashMap<String, RgbImage> = panels
+        .par_iter()
+        .filter(|p| used_ids.contains(p.id.as_str()))
+        .filter_map(|p| image::open(&p.image_path).ok().map(|img| (p.id.clone(), img.into_rgb8())))
+        .collect();
 
     let fps = config.fps.max(24);
     let width = config.width.max(720);
@@ -53,8 +61,13 @@ pub fn render_timeline_to_mp4(
     let has_audio = !beat_map.audio_path.starts_with("sample://")
         && std::path::Path::new(&beat_map.audio_path).is_file();
     println!(
-        "[render] {}x{} @{}fps clips={} audio={} out={}",
-        width, height, fps, timeline.len(),
+        "[render] {}x{} @{}fps clips={} panels_loaded={}/{} audio={} out={}",
+        width,
+        height,
+        fps,
+        timeline.len(),
+        loaded_images.len(),
+        panels.len(),
         if has_audio { beat_map.audio_path.as_str() } else { "(none)" },
         config.output_path
     );
@@ -69,8 +82,16 @@ pub fn render_timeline_to_mp4(
     for enc in tried {
         println!("[render] encoder: {}", enc.label());
         match encode_with(enc, &loaded_images, beat_map, timeline, config, width, height, fps, has_audio) {
-            Ok(()) => {
-                println!("[render] done -> {} ({})", config.output_path, enc.label());
+            Ok(frames) => {
+                let secs = t0.elapsed().as_secs_f32().max(0.001);
+                println!(
+                    "[render] done {} frames in {:.2}s ({:.0} fps) -> {} ({})",
+                    frames,
+                    secs,
+                    frames as f32 / secs,
+                    config.output_path,
+                    enc.label()
+                );
                 return Ok(config.output_path.clone());
             }
             Err(e) => {
@@ -85,7 +106,7 @@ pub fn render_timeline_to_mp4(
 #[allow(clippy::too_many_arguments)]
 fn encode_with(
     enc: Encoder,
-    loaded_images: &HashMap<String, image::DynamicImage>,
+    loaded_images: &HashMap<String, RgbImage>,
     beat_map: &BeatMap,
     timeline: &[TimelineClip],
     config: &RenderConfig,
@@ -93,8 +114,8 @@ fn encode_with(
     height: u32,
     fps: u32,
     has_audio: bool,
-) -> Result<()> {
-    let mut cmd = Command::new("ffmpeg");
+) -> Result<u64> {
+    let mut cmd = Command::new(tool("ffmpeg"));
     cmd.args(["-y", "-hide_banner", "-f", "rawvideo", "-pixel_format", "rgb24", "-video_size"])
         .arg(format!("{}x{}", width, height))
         .args(["-framerate"])
@@ -125,30 +146,42 @@ fn encode_with(
         buf
     });
 
-    let mut write_err: Option<std::io::Error> = None;
-    if let Some(mut stdin) = child.stdin.take() {
-        let default_img = image::DynamicImage::new_rgb8(800, 1200);
-        'clips: for clip in timeline {
-            let panel_img = loaded_images.get(&clip.panel_id).unwrap_or(&default_img);
-            let total_frames = ((clip.duration_sec * fps as f32).round() as u32).max(1);
-            for f in 0..total_frames {
-                let progress = f as f32 / total_frames as f32;
-                let frame = compose_vertical_frame(panel_img, clip, progress, width, height);
-                if let Err(e) = stdin.write_all(frame.as_raw()) {
-                    write_err = Some(e);
-                    break 'clips;
-                }
-            }
+    // Dedicated writer thread so CPU frame composition overlaps with FFmpeg pipe I/O.
+    let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("stdin ffmpeg tidak tersedia"))?;
+    let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(16);
+    let writer_thread = std::thread::spawn(move || -> std::io::Result<()> {
+        for frame in rx {
+            stdin.write_all(&frame)?;
         }
-    } // stdin dropped -> EOF for ffmpeg
+        stdin.flush()
+    });
 
+    let default_img = RgbImage::new(800, 1200);
+    let mut total_written: u64 = 0;
+    for clip in timeline {
+        let panel_img = loaded_images.get(&clip.panel_id).unwrap_or(&default_img);
+        let total_frames = ((clip.duration_sec * fps as f32).round() as u32).max(1);
+        let send_res = render_clip_frames(panel_img, clip, total_frames, width, height, |frame| {
+            total_written += 1;
+            tx.send(frame)
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "ffmpeg pipe closed"))
+        });
+        if send_res.is_err() {
+            break;
+        }
+    }
+    drop(tx); // Close channel -> writer finishes and drops stdin -> EOF for ffmpeg
+
+    let write_res = writer_thread.join().unwrap_or_else(|_| {
+        Err(std::io::Error::new(std::io::ErrorKind::Other, "writer thread panicked"))
+    });
     let status = child.wait()?;
     let log = stderr_thread.join().unwrap_or_default();
-    if write_err.is_some() || !status.success() {
+    if write_res.is_err() || !status.success() {
         let tail: Vec<&str> = log.lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect();
         println!("[render] ffmpeg failed: {}", log);
         return Err(anyhow!("FFmpeg gagal ({}): {}", status, tail.join(" | ")));
     }
 
-    Ok(())
+    Ok(total_written)
 }

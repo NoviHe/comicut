@@ -12,6 +12,8 @@ pnpm-debug.log*
 src-tauri/target/
 src-tauri/gen/
 src-tauri/WixTools/
+# Sidecar binaries (FFmpeg) — fetched by `npm run sidecars`, too large for git
+src-tauri/binaries/
 **/*.rs.bk
 
 # Environment & Secrets

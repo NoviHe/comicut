@@ -42,7 +42,7 @@ pub async fn download_audio(source: String) -> Result<String, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     println!("[audio] yt-dlp target={}", target);
-    let mut cmd = tokio::process::Command::new("yt-dlp");
+    let mut cmd = tokio::process::Command::new(super::deps_cmd::tool("yt-dlp"));
     cmd.args([
         "-x",
         "--audio-format",
@@ -66,7 +66,7 @@ pub async fn download_audio(source: String) -> Result<String, String> {
 
     let out = cmd.output().await.map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
-            "yt-dlp tidak ditemukan di PATH. Install: pip install yt-dlp (dan ffmpeg).".to_string()
+            "yt-dlp belum terpasang. Klik Install di panel Status Dependensi.".to_string()
         } else {
             e.to_string()
         }
@@ -76,7 +76,7 @@ pub async fn download_audio(source: String) -> Result<String, String> {
         println!("[audio] yt-dlp failed: {}", err);
         let last = err.lines().rev().find(|l| l.contains("ERROR")).unwrap_or("unknown error");
         let hint = if err.contains("403") || err.contains("Sign in") || err.contains("nsig") {
-            " — update yt-dlp: pip install -U \"yt-dlp[default]\""
+            " — update yt-dlp lewat panel Status Dependensi"
         } else {
             ""
         };

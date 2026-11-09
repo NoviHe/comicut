@@ -33,7 +33,7 @@ pub struct GpuInfo {
 }
 
 fn quiet(program: &str) -> Command {
-    let mut c = Command::new(program);
+    let mut c = Command::new(crate::commands::deps_cmd::tool(program));
     c.stdin(Stdio::null());
     #[cfg(windows)]
     {

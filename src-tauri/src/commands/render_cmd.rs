@@ -16,7 +16,11 @@ pub async fn render_montagem_video(
     timeline: Vec<TimelineClip>,
     config: RenderConfig,
 ) -> Result<String, String> {
-    render_timeline_to_mp4(&panels, &beat_map, &timeline, &config).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || {
+        render_timeline_to_mp4(&panels, &beat_map, &timeline, &config).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

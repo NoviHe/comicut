@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "sidecars": "node scripts/fetch-sidecars.mjs",
+    "postinstall": "node scripts/fetch-sidecars.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

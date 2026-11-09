@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   BeatMap,
   ComicFormat,
@@ -177,6 +178,12 @@ export interface DepStatus {
   path?: string;
   outdated: boolean;
   installHint: string;
+  /** Can be installed/updated from inside the app. */
+  installable: boolean;
+  /** Resolved binary is the app-managed copy (%LOCALAPPDATA%\ComiCut\bin). */
+  managed: boolean;
+  /** Resolved binary is the sidecar shipped with the installer. */
+  bundled: boolean;
 }
 
 export interface DepReport {
@@ -184,14 +191,41 @@ export interface DepReport {
   system: { cpu: string; threads: number; gpuEncoder?: string; gpus: string[] };
 }
 
+export interface DepUpdate {
+  id: string;
+  installed?: string;
+  latest?: string;
+  updateAvailable: boolean;
+  error?: string;
+}
+
+export interface DepProgress {
+  id: string;
+  stage: "download" | "verify" | "install" | "done";
+  downloaded: number;
+  total?: number;
+}
+
 export async function checkDependencies(): Promise<DepReport> {
   if (!isTauri()) throw new Error("Cek dependensi membutuhkan runtime Tauri.");
   return await invoke<DepReport>("check_dependencies");
 }
 
-export async function updateYtdlp(): Promise<string> {
-  if (!isTauri()) throw new Error("Update membutuhkan runtime Tauri.");
-  return await invoke<string>("update_ytdlp");
+/** Latest official versions vs installed (requires internet). */
+export async function checkDependencyUpdates(): Promise<DepUpdate[]> {
+  if (!isTauri()) throw new Error("Cek update membutuhkan runtime Tauri.");
+  return await invoke<DepUpdate[]>("check_dependency_updates");
+}
+
+/** Download + SHA-256 verify + install the latest build of a tool into the app-managed folder. */
+export async function installDependency(id: string): Promise<string> {
+  if (!isTauri()) throw new Error("Install membutuhkan runtime Tauri.");
+  return await invoke<string>("install_dependency", { id });
+}
+
+export async function onDepProgress(cb: (p: DepProgress) => void): Promise<UnlistenFn> {
+  if (!isTauri()) return () => {};
+  return await listen<DepProgress>("dep-progress", (e) => cb(e.payload));
 }
 
 /** AI picks panel + effect per beat-fitted cut. Throws on API failure so the caller can fall back to local. */
@@ -204,12 +238,55 @@ export async function aiDirectTimeline(
   return await invoke<TimelineClip[]>("ai_direct_timeline", { panels, beatMap, config });
 }
 
-export async function defaultOutputPath(): Promise<string> {
+const DEFAULT_EXPORT_DIR_KEY = "comicut:default_export_dir";
+
+export function getDefaultExportDir(): string | null {
   try {
-    const { videoDir, join } = await import("@tauri-apps/api/path");
-    return await join(await videoDir(), "comicut_montagem.mp4");
+    return localStorage.getItem(DEFAULT_EXPORT_DIR_KEY);
   } catch {
-    return "comicut_montagem.mp4";
+    return null;
+  }
+}
+
+export function setDefaultExportDir(path: string): void {
+  try {
+    localStorage.setItem(DEFAULT_EXPORT_DIR_KEY, path);
+  } catch (err) {
+    console.warn("Failed to save default export directory:", err);
+  }
+}
+
+export function clearDefaultExportDir(): void {
+  try {
+    localStorage.removeItem(DEFAULT_EXPORT_DIR_KEY);
+  } catch (err) {
+    console.warn("Failed to clear default export directory:", err);
+  }
+}
+
+export async function getSystemDefaultExportDir(): Promise<string> {
+  try {
+    const { videoDir } = await import("@tauri-apps/api/path");
+    return await videoDir();
+  } catch {
+    return "";
+  }
+}
+
+export async function showInFolder(path: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("show_in_folder", { path });
+}
+
+export async function defaultOutputPath(filename?: string): Promise<string> {
+  const name = filename || "comicut_montagem.mp4";
+  try {
+    const customDir = getDefaultExportDir();
+    const { videoDir, join } = await import("@tauri-apps/api/path");
+    const dir = customDir || (await videoDir());
+    return await join(dir, name);
+  } catch {
+    return name;
   }
 }
 
@@ -220,4 +297,67 @@ export async function suggestSongQueries(
 ): Promise<string[]> {
   if (!isTauri()) throw new Error("Saran lagu membutuhkan runtime Tauri.");
   return await invoke<string[]>("suggest_songs", { panels, config });
+}
+
+export async function minimizeWindow(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().minimize();
+  } catch {
+    await invoke("window_minimize");
+  }
+}
+
+export async function toggleMaximizeWindow(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().toggleMaximize();
+  } catch {
+    await invoke("window_toggle_maximize");
+  }
+}
+
+export async function closeWindow(): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().close();
+  } catch {
+    await invoke("window_close");
+  }
+}
+
+export interface DeviceDiagnostics {
+  appName: string;
+  appVersion: string;
+  osName: string;
+  osBuild: string;
+  kernel: string;
+  cpuModel: string;
+  architecture: string;
+  cpuCoresPhysical: number;
+  cpuCoresLogical: number;
+  totalMemoryGb: number;
+  gpus: string[];
+}
+
+export async function getDeviceDiagnostics(): Promise<DeviceDiagnostics> {
+  if (!isTauri()) {
+    return {
+      appName: "ComiCut Studio",
+      appVersion: "0.1.0",
+      osName: "Windows 11",
+      osBuild: "26200",
+      kernel: "26200",
+      cpuModel: "AMD Ryzen 5 3600XT 6-Core Processor",
+      architecture: "x86_64",
+      cpuCoresPhysical: 6,
+      cpuCoresLogical: 12,
+      totalMemoryGb: 16,
+      gpus: ["MuMuPlayer Virtual Display Adapter", "NVIDIA GeForce RTX 2060"],
+    };
+  }
+  return await invoke<DeviceDiagnostics>("get_device_diagnostics");
 }
