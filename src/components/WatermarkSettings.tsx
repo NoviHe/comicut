@@ -17,45 +17,52 @@ export const WatermarkSettings: React.FC<WatermarkSettingsProps> = ({
   watermark,
   onChange,
 }) => {
-  const [expanded, setExpanded] = useState<boolean>(true);
+  const [expanded, setExpanded] = useState<boolean>(false);
 
   const update = (partial: Partial<WatermarkConfig>) => {
     onChange((prev) => ({ ...prev, ...partial }));
   };
 
   return (
-    <div className="card space-y-3">
+    <div className={`card transition-all ${expanded ? "space-y-3" : "py-2.5"}`}>
       {/* Header with Title and Toggle */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div
-          className="flex items-center gap-2 cursor-pointer select-none"
+          className="flex items-center gap-2.5 cursor-pointer select-none min-w-0"
           onClick={() => setExpanded(!expanded)}
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15 text-violet-400 border border-violet-500/30">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
             <Type className="w-4 h-4" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="card-title text-sm font-semibold text-white">
                 Watermark Video
               </h2>
               {watermark.enabled && watermark.text.trim() ? (
-                <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-300">
-                  {watermark.text}
-                </span>
+                <>
+                  <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-300 truncate max-w-[140px]">
+                    {watermark.text}
+                  </span>
+                  <span className="text-[10px] text-zinc-500 font-mono">
+                    {watermark.font} • {Math.round(watermark.opacity * 100)}%
+                  </span>
+                </>
               ) : (
                 <span className="text-[10px] text-zinc-500 font-normal">
                   (Nonaktif)
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-zinc-400">
-              Teks nama channel/brand otomatis tersemat di video montagem
-            </p>
+            {expanded && (
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Teks nama channel/brand otomatis tersemat di video montagem
+              </p>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <label className="flex items-center gap-2 cursor-pointer text-xs text-zinc-300 select-none">
             <input
               type="checkbox"
