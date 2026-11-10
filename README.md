@@ -1,4 +1,22 @@
-# ComiCut Studio (Rust + Tauri v2 + React)
+<p align="center">
+  <img src="assets/comicut-banner.png" alt="ComiCut Studio" width="100%" />
+</p>
+
+<p align="center">
+  <strong>ComiCut Studio</strong> — <em>AI Webtoon &amp; Manga Montagem Video Maker (Rust + Tauri v2 + React)</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust" />
+  <img src="https://img.shields.io/badge/Tauri_v2-24C8D5?style=flat-square&logo=tauri&logoColor=white" alt="Tauri" />
+  <img src="https://img.shields.io/badge/React_18-20232A?style=flat-square&logo=react&logoColor=61DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/FFmpeg-007808?style=flat-square&logo=ffmpeg&logoColor=white" alt="FFmpeg" />
+  <img src="https://img.shields.io/badge/Format-9:16_60fps-8B5CF6?style=flat-square" alt="9:16 Vertical Video" />
+</p>
+
+---
+
+## Tentang ComiCut Studio
 
 Aplikasi otomatis untuk mengambil chapter komik (**Webtoon/Manhwa vertikal** & **Manga horizontal**), memotong panel secara cerdas tanpa membelah gambar karakter, memilih panel **Epic/Penting** (menggunakan *Rust Visual Heuristics* + *Vision AI*), menyinkronkannya dengan ketukan *sub-bass* lagu **Montagem / Phonk / Remix**, dan merendernya menjadi video vertikal **9:16 (1080x1920 60fps)** siap upload ke Reels, Shorts, atau TikTok.
 
@@ -41,7 +59,11 @@ npm run tauri dev
 npm run dev
 ```
 
-### 3. Build Aplikasi Produksi
+### 3. Build Aplikasi Produksi (Installer & Portable)
 ```bash
+# Build Installer (NSIS Setup .exe & .msi)
 npm run tauri build
+
+# Build & Bungkus Versi Portable (.zip + portable.json + .sha256 ke release_assets/)
+npm run build:portable
 ```

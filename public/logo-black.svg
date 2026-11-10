@@ -1,0 +1,7 @@
+<svg fill="#000000" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="titleA"><title>ComiCut Logo</title>
+  <title id="titleA">ComiCut Concept A - The Comic Blade</title>
+  <!-- Top Segment (Displaced +5, -5 along 45-deg cut) -->
+  <path fill="#000000" d="M 124 22 L 196 22 C 212.57 22 226 35.43 226 52 L 226 84 C 226 92.84 218.84 100 210 100 L 158 100 C 146.95 100 138 108.95 138 120 L 138 128 L 80 70 L 96 22 Z"/>
+  <!-- Bottom Segment (Displaced -5, +5 along 45-deg cut) -->
+  <path fill="#000000" d="M 30 104 L 88 162 L 88 170 C 88 181.05 96.95 190 108 190 L 160 190 C 168.84 190 176 197.16 176 206 L 176 214 C 176 226.15 166.15 236 154 236 L 74 236 C 50.8 236 32 217.2 32 194 L 32 128 Z"/>
+</svg>

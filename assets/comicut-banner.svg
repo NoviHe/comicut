@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-label="ComiCut Studio Banner">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0f"/>
+      <stop offset="50%" stop-color="#0e0c18"/>
+      <stop offset="100%" stop-color="#140f24"/>
+    </linearGradient>
+    <linearGradient id="violetGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+    <linearGradient id="fuchsiaGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D946EF"/>
+      <stop offset="100%" stop-color="#EC4899"/>
+    </linearGradient>
+    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#C084FC"/>
+      <stop offset="100%" stop-color="#F472B6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="20%" cy="50%" r="40%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="360" fill="url(#bgGrad)" rx="16"/>
+  <!-- Subtle accent border -->
+  <rect x="1" y="1" width="1198" height="358" fill="none" stroke="#8B5CF6" stroke-opacity="0.2" stroke-width="1.5" rx="15"/>
+  <!-- Ambient glow behind mark -->
+  <circle cx="190" cy="180" r="180" fill="url(#glow)"/>
+
+  <!-- COMIC BLADE LOGO MARK (Scaled 1.1x & centered at x=190, y=180) -->
+  <g transform="translate(62, 52) scale(1.0)">
+    <!-- Top Segment (Displaced +5, -5 along 45-deg cut) -->
+    <path fill="url(#violetGrad)" d="M 124 22 L 196 22 C 212.57 22 226 35.43 226 52 L 226 84 C 226 92.84 218.84 100 210 100 L 158 100 C 146.95 100 138 108.95 138 120 L 138 128 L 80 70 L 96 22 Z"/>
+    <!-- Bottom Segment (Displaced -5, +5 along 45-deg cut) -->
+    <path fill="url(#fuchsiaGrad)" d="M 30 104 L 88 162 L 88 170 C 88 181.05 96.95 190 108 190 L 160 190 C 168.84 190 176 197.16 176 206 L 176 214 C 176 226.15 166.15 236 154 236 L 74 236 C 50.8 236 32 217.2 32 194 L 32 128 Z"/>
+  </g>
+
+  <!-- TYPOGRAPHY & BRANDING -->
+  <g transform="translate(360, 0)">
+    <!-- Main Title -->
+    <text x="0" y="148" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="76" font-weight="900" letter-spacing="-1.5">
+      <tspan fill="#FFFFFF">Comi</tspan><tspan fill="url(#textGrad)">Cut</tspan>
+    </text>
+
+    <!-- Studio Badge -->
+    <rect x="330" y="88" width="116" height="34" rx="17" fill="#8B5CF6" fill-opacity="0.15" stroke="#A855F7" stroke-width="1.5"/>
+    <text x="388" y="111" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="800" fill="#E9D5FF" text-anchor="middle" letter-spacing="3.0">STUDIO</text>
+
+    <!-- Subtitle / Tagline -->
+    <text x="0" y="196" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="22" font-weight="500" fill="#94A3B8" letter-spacing="0.2">
+      AI Webtoon &amp; Manga Montagem Video Maker
+    </text>
+
+    <!-- Pills / Feature Highlights -->
+    <g transform="translate(0, 230)">
+      <!-- Pill 1: Rust & Tauri -->
+      <rect x="0" y="0" width="170" height="36" rx="18" fill="#1e1b2e" stroke="#8B5CF6" stroke-opacity="0.3" stroke-width="1"/>
+      <text x="85" y="23" font-family="sans-serif" font-size="13" font-weight="600" fill="#DDD6FE" text-anchor="middle">⚡ Rust + Tauri v2</text>
+
+      <!-- Pill 2: 9:16 Video -->
+      <rect x="182" y="0" width="168" height="36" rx="18" fill="#1e1b2e" stroke="#8B5CF6" stroke-opacity="0.3" stroke-width="1"/>
+      <text x="266" y="23" font-family="sans-serif" font-size="13" font-weight="600" fill="#DDD6FE" text-anchor="middle">🎬 9:16 60fps Vertical</text>
+
+      <!-- Pill 3: Beat Drop Sync -->
+      <rect x="362" y="0" width="178" height="36" rx="18" fill="#1e1b2e" stroke="#8B5CF6" stroke-opacity="0.3" stroke-width="1"/>
+      <text x="451" y="23" font-family="sans-serif" font-size="13" font-weight="600" fill="#DDD6FE" text-anchor="middle">🔊 Sub-Bass Drop Sync</text>
+
+      <!-- Pill 4: Vision AI -->
+      <rect x="552" y="0" width="160" height="36" rx="18" fill="#1e1b2e" stroke="#8B5CF6" stroke-opacity="0.3" stroke-width="1"/>
+      <text x="632" y="23" font-family="sans-serif" font-size="13" font-weight="600" fill="#DDD6FE" text-anchor="middle">🤖 Vision AI Panels</text>
+    </g>
+  </g>
+</svg>

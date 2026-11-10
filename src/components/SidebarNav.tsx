@@ -1,5 +1,6 @@
 import React from "react";
-import { CircleHelp, Folder, Home, Scissors, Settings } from "lucide-react";
+import { CircleHelp, Folder, Home, Settings } from "lucide-react";
+import { ComiCutLogo } from "./ComiCutLogo";
 
 export type NavTab = "home" | "projects" | "templates" | "help" | "settings";
 
@@ -67,8 +68,8 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({ active, onSelect, showLo
     <aside className="relative z-20 flex h-full w-[95px] shrink-0 flex-col items-center border-r border-white/[0.06] bg-[#0b0b0e] py-3">
       {/* Optional Brand Logo */}
       {showLogo && (
-        <div className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-950/60">
-          <Scissors className="h-5 w-5 text-white" />
+        <div className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-violet-950/40 border border-violet-500/25 shadow-lg shadow-violet-950/50">
+          <ComiCutLogo className="h-6 w-6" />
         </div>
       )}
 

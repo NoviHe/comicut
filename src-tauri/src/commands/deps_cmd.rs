@@ -80,7 +80,7 @@ pub fn is_managed(path: &Path) -> bool {
 }
 
 /// Folder of ComiCut.exe — where Tauri places bundled sidecars (FFmpeg).
-fn exe_dir() -> Option<PathBuf> {
+pub(crate) fn exe_dir() -> Option<PathBuf> {
     std::env::current_exe().ok()?.parent().map(Path::to_path_buf)
 }
 
@@ -110,11 +110,13 @@ pub fn tool(bin: &str) -> PathBuf {
 pub fn init_managed_path() {
     let dir = managed_bin_dir();
     let _ = std::fs::create_dir_all(&dir);
-    if let Ok(entries) = std::fs::read_dir(&dir) {
-        for e in entries.flatten() {
-            let n = e.file_name().to_string_lossy().to_string();
-            if n.ends_with(".old") || n.ends_with(".new") || n.ends_with(".download") {
-                let _ = std::fs::remove_file(e.path());
+    for cleanup_dir in std::iter::once(dir.clone()).chain(exe_dir()) {
+        if let Ok(entries) = std::fs::read_dir(&cleanup_dir) {
+            for e in entries.flatten() {
+                let n = e.file_name().to_string_lossy().to_string();
+                if n.ends_with(".old") || n.ends_with(".new") || n.ends_with(".download") {
+                    let _ = std::fs::remove_file(e.path());
+                }
             }
         }
     }
@@ -179,7 +181,7 @@ fn parse_ver(s: &str) -> Vec<u64> {
 
 /// `Some(true)` if `latest` is newer than `installed`; `None` if `installed` isn't comparable
 /// (e.g. FFmpeg git builds like "N-12345-g...").
-fn is_newer(latest: &str, installed: &str) -> Option<bool> {
+pub(crate) fn is_newer(latest: &str, installed: &str) -> Option<bool> {
     let (l, i) = (parse_ver(latest), parse_ver(installed));
     if l.is_empty() || i.is_empty() {
         return None;

@@ -13,6 +13,7 @@ use commands::{
         app_restart, check_dependencies, get_device_diagnostics, show_in_folder, window_close,
         window_minimize, window_toggle_maximize,
     },
+    updater_cmd::{check_portable_update, get_install_mode, install_portable_update},
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -42,6 +43,9 @@ pub fn run() {
             get_device_diagnostics,
             show_in_folder,
             app_restart,
+            get_install_mode,
+            check_portable_update,
+            install_portable_update,
             window_minimize,
             window_toggle_maximize,
             window_close

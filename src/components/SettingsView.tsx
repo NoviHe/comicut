@@ -23,7 +23,12 @@ import {
   setDefaultExportDir,
   showInFolder,
 } from "../services/tauriCommands";
-import { AppUpdateInfo, checkComiCutUpdate } from "../services/appUpdater";
+import {
+  AppUpdateInfo,
+  checkComiCutUpdate,
+  getInstallMode,
+  InstallModeInfo,
+} from "../services/appUpdater";
 
 interface SettingsCardProps {
   icon?: React.ReactNode;
@@ -88,6 +93,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [checkingUpdates, setCheckingUpdates] = useState<boolean>(false);
   const [updateStatus, setUpdateStatus] = useState<"uptodate" | "available" | "error">("uptodate");
   const [foundUpdate, setFoundUpdate] = useState<AppUpdateInfo | null>(null);
+  const [installMode, setInstallMode] = useState<InstallModeInfo | null>(null);
+
+  useEffect(() => {
+    void getInstallMode().then(setInstallMode);
+  }, []);
 
   const handleCheckUpdates = async () => {
     setCheckingUpdates(true);
@@ -360,14 +370,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex items-center justify-between rounded-xl bg-zinc-900/40 border border-white/[0.03] px-4 py-2.5">
                     <span className="text-zinc-500">Versi Terpasang</span>
                     <span className="text-zinc-100 font-medium font-mono text-[11px]">
-                      ComiCut Studio v0.1.0
+                      ComiCut Studio v{installMode?.currentVersion || "0.1.0"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-zinc-900/40 border border-white/[0.03] px-4 py-2.5">
+                    <span className="text-zinc-500">Tipe Aplikasi</span>
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-semibold border ${
+                        installMode?.isPortable
+                          ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                          : "bg-sky-500/15 border-sky-500/30 text-sky-300"
+                      }`}
+                    >
+                      {installMode?.isPortable
+                        ? "Portable (.zip)"
+                        : "Installer (Setup / MSI)"}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between rounded-xl bg-zinc-900/40 border border-white/[0.03] px-4 py-2.5">
                     <span className="text-zinc-500">Kanal Pembaruan</span>
                     <span className="text-zinc-100 font-medium text-[11px]">
-                      GitHub Releases (Official)
+                      {installMode?.isPortable
+                        ? "GitHub Releases — Paket Portable (.zip)"
+                        : "GitHub Releases — Paket Installer"}
                     </span>
                   </div>
 

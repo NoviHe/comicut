@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "sidecars": "node scripts/fetch-sidecars.mjs",
     "postinstall": "node scripts/fetch-sidecars.mjs",
+    "portable": "node scripts/package-portable.mjs",
+    "build:portable": "tauri build --no-bundle && node scripts/package-portable.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

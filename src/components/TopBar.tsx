@@ -1,5 +1,6 @@
 import React from "react";
-import { ChevronLeft, Minus, Plus, Scissors, Settings, Square, X } from "lucide-react";
+import { ChevronLeft, Minus, Plus, Settings, Square, X } from "lucide-react";
+import { ComiCutLogo } from "./ComiCutLogo";
 import {
   closeWindow,
   minimizeWindow,
@@ -32,8 +33,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         data-tauri-drag-region
         className="flex h-full w-[95px] shrink-0 items-center justify-center border-r border-white/[0.06]"
       >
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-950/60">
-          <Scissors className="h-4 w-4 text-white" />
+        <div className="grid h-9 w-9 place-items-center rounded-xl bg-violet-950/40 border border-violet-500/25 shadow-lg shadow-violet-950/50">
+          <ComiCutLogo className="h-5 w-5" />
         </div>
       </div>
 
