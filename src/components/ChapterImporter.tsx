@@ -36,21 +36,20 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
     DEFAULT_PLATFORM_PRESETS
   );
   const [selectedPlatform, setSelectedPlatform] =
-    useState<PlatformKind>("VoraToon");
-  const [url, setUrl] = useState<string>("https://voratoon.web.id/");
+    useState<PlatformKind>("Webtoon");
+  const [url, setUrl] = useState<string>("https://www.webtoons.com/");
   const [comicFormat, setComicFormat] =
     useState<ComicFormat>("WebtoonVertical");
   const [customSelector, setCustomSelector] = useState<string>(
-    '#readerarea img, .reading-content img, .chapter-area img, img[class*="chapterPage"]'
+    "#_imageList img._images, #_imageList img"
   );
   const [customReferer, setCustomReferer] = useState<string>(
-    "https://voratoon.web.id/"
+    "https://www.webtoons.com/"
   );
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [localFolderPath, setLocalFolderPath] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [savedCustomDomains, setSavedCustomDomains] = useState<string[]>([
-    "https://voratoon.web.id/",
     "https://www.webtoons.com/",
     "https://mangadex.org/",
   ]);
@@ -68,9 +67,7 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
       setComicFormat(preset.defaultFormat);
       setCustomSelector(preset.imageSelector);
       setCustomReferer(preset.refererHeader);
-      if (platformId === "VoraToon" && !url.includes("voratoon")) {
-        setUrl("https://voratoon.web.id/");
-      } else if (platformId === "Webtoon" && !url.includes("webtoons.com")) {
+      if (platformId === "Webtoon" && !url.includes("webtoons.com")) {
         setUrl(preset.exampleUrl);
       } else if (platformId === "MangaDex" && !url.includes("mangadex.org")) {
         setUrl(preset.exampleUrl);
@@ -89,10 +86,6 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
       setSelectedPlatform("MangaDex");
       setComicFormat("MangaRTL");
       setCustomReferer("https://mangadex.org/");
-    } else if (lower.includes("voratoon.web.id")) {
-      setSelectedPlatform("VoraToon");
-      setComicFormat("WebtoonVertical");
-      setCustomReferer("https://voratoon.web.id/");
     } else if (newUrl.startsWith("http")) {
       setSelectedPlatform("Custom");
       try {
@@ -249,7 +242,7 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
         caption: "Beat Hit #3 — Ledakan impact & siluet kemenangan",
       },
     ];
-    onPanelsLoaded(samplePanels, "VoraToon — Sample Manhwa Chapter 01");
+    onPanelsLoaded(samplePanels, "Sample Manhwa Chapter 01");
     onStatusMessage(
       "Berhasil memuat 6 panel simulasi (Webtoon Vertical Slicer + Epic Roles)."
     );
@@ -330,14 +323,14 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
           {/* Input URL Chapter */}
           <div>
             <label className="block text-xs text-zinc-300 mb-1">
-              URL Chapter Komik (Webtoon / MangaDex / VoraToon / Web Lain)
+              URL Chapter Komik (LINE Webtoon / MangaDex / Web Lain)
             </label>
             <div className="flex gap-2">
               <input
                 type="url"
                 value={url}
                 onChange={(e) => handleUrlChange(e.target.value)}
-                placeholder="Contoh: https://voratoon.web.id/judul-chapter-1/"
+                placeholder="Contoh: https://www.webtoons.com/... atau https://mangadex.org/..."
                 className="field flex-1"
               />
             </div>
@@ -486,7 +479,7 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
         <button
           type="button"
           onClick={handleLoadSimulationPanels}
-          title="Muat contoh panel manhwa VoraToon untuk mencoba timeline & efek Montagem"
+          title="Muat contoh panel manhwa untuk mencoba timeline & efek Montagem"
           className="btn-ghost flex items-center gap-1.5 transition"
         >
           <Sparkles className="w-3.5 h-3.5 text-amber-400" />

@@ -127,9 +127,9 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
             Belum ada panel yang diekstrak
           </p>
           <p className="text-[11px] text-zinc-600 max-w-xs mt-1">
-            Masukkan URL chapter dari Webtoon, MangaDex,{" "}
-            <span className="text-zinc-400">voratoon.web.id</span>, atau klik
-            tombol <b>Simulasi</b> di kiri untuk menguji pipeline.
+            Masukkan URL chapter dari LINE Webtoon, MangaDex, atau website
+            komik lainnya, atau klik tombol <b>Simulasi</b> di kiri untuk menguji
+            pipeline.
           </p>
         </div>
       ) : (

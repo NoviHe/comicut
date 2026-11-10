@@ -47,22 +47,10 @@ export const DEFAULT_PLATFORM_PRESETS: PlatformPreset[] = [
       "Mengambil halaman resolusi penuh langsung melalui endpoint resmi MangaDex At-Home Server.",
   },
   {
-    id: "VoraToon",
-    name: "VoraToon (voratoon.web.id)",
-    baseUrl: "https://voratoon.web.id",
-    exampleUrl: "https://voratoon.web.id/judul-manhwa-chapter-01/",
-    defaultFormat: "WebtoonVertical",
-    imageSelector:
-      '#readerarea img, .reading-content img, .chapter-area img, img[class*="chapterPage"]',
-    refererHeader: "https://voratoon.web.id/",
-    description:
-      "Preset khusus untuk https://voratoon.web.id/ (mendukung ekstraksi #readerarea, lazy-src, dan ts_reader JSON).",
-  },
-  {
     id: "Custom",
     name: "Website Komik Lainnya (Custom URL)",
     baseUrl: "https://",
-    exampleUrl: "https://voratoon.web.id/chapter-baru/",
+    exampleUrl: "https://shinigami.id/series/...",
     defaultFormat: "WebtoonVertical",
     imageSelector: "#readerarea img, .reading-content img, article img",
     refererHeader: "",

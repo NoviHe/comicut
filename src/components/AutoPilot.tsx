@@ -13,7 +13,6 @@ export const platformFor = (url: string): PlatformKind => {
   const u = url.toLowerCase();
   if (u.includes("webtoons.com")) return "Webtoon";
   if (u.includes("mangadex.org")) return "MangaDex";
-  if (u.includes("voratoon.web.id")) return "VoraToon";
   return "Custom";
 };
 
@@ -71,7 +70,7 @@ export const AutoPilot: React.FC<Props> = ({ ai, onRun, onOpenSettings }) => {
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="Link chapter komik (Webtoon / MangaDex / VoraToon / Shinigami / lainnya)"
+          placeholder="Link chapter komik (Webtoon / MangaDex / Shinigami / lainnya)"
           className="field"
           disabled={running}
         />
