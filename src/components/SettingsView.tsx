@@ -370,7 +370,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex items-center justify-between rounded-xl bg-zinc-900/40 border border-white/[0.03] px-4 py-2.5">
                     <span className="text-zinc-500">Versi Terpasang</span>
                     <span className="text-zinc-100 font-medium font-mono text-[11px]">
-                      ComiCut Studio v{installMode?.currentVersion || "0.1.0"}
+                      ComiCut Studio v{installMode?.currentVersion || "0.1.1"}
                     </span>
                   </div>
 

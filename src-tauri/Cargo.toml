@@ -1,6 +1,6 @@
 [package]
 name = "comicut"
-version = "0.1.0"
+version = "0.1.1"
 description = "Automated Webtoon/Manga Epic Panel Slicer & Montagem Reels/Shorts Video Generator"
 authors = ["ComiCut Developer"]
 edition = "2021"

@@ -48,7 +48,7 @@ export async function getInstallMode(): Promise<InstallModeInfo> {
     return {
       isPortable: false,
       mode: "installer",
-      currentVersion: "0.1.0",
+      currentVersion: "0.1.1",
       exeDir: "",
     };
   }
@@ -58,7 +58,7 @@ export async function getInstallMode(): Promise<InstallModeInfo> {
     return {
       isPortable: false,
       mode: "installer",
-      currentVersion: "0.1.0",
+      currentVersion: "0.1.1",
       exeDir: "",
     };
   }
