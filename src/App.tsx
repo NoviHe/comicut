@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Scissors, Settings, Terminal } from "lucide-react";
-import { BeatMap, EffectType, Panel, TimelineClip } from "./types/project";
+import { BeatMap, EffectType, Panel, TimelineClip, WatermarkConfig } from "./types/project";
 import { ChapterImporter } from "./components/ChapterImporter";
 import { PanelGallery } from "./components/PanelGallery";
 import { AudioWaveform } from "./components/AudioWaveform";
 import { TimelineEditor } from "./components/TimelineEditor";
 import { VideoPreview } from "./components/VideoPreview";
+import { WatermarkSettings } from "./components/WatermarkSettings";
 import { DependencyStatus } from "./components/DependencyStatus";
 import { AiSettingsModal } from "./components/AiSettingsModal";
 import { NavTab, SidebarNav } from "./components/SidebarNav";
@@ -32,6 +33,7 @@ import {
   getStoredWatermarkConfig,
   renderMontagemVideo,
   reviewEpicPanels,
+  saveStoredWatermarkConfig,
   suggestSongQueries,
   scrapeComicChapter,
 } from "./services/tauriCommands";
@@ -78,6 +80,15 @@ export function App() {
   const [activeNav, setActiveNav] = useState<NavTab>("home");
   const [currentProjectId, setCurrentProjectId] = useState<string | undefined>();
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>(() => loadSavedProjects());
+  const [watermark, setWatermark] = useState<WatermarkConfig>(() => getStoredWatermarkConfig());
+
+  const updateWatermark = (updater: (prev: WatermarkConfig) => WatermarkConfig) => {
+    setWatermark((prev) => {
+      const next = updater(prev);
+      saveStoredWatermarkConfig(next);
+      return next;
+    });
+  };
   const [statusMessage, setStatusMessage] = useState<string>(
     "Siap! Mulai dari langkah 1: pilih sumber komik."
   );
@@ -200,7 +211,6 @@ export function App() {
       if (input.render) {
         step(4, "Merender video MP4...");
         const out = await defaultOutputPath();
-        const storedWm = getStoredWatermarkConfig();
         await renderMontagemVideo(list, bm, clips, {
           outputPath: out,
           width: 1080,
@@ -209,7 +219,7 @@ export function App() {
           blurBackground: true,
           vignetteStrength: 0.35,
           beatFlashEnabled: true,
-          watermark: storedWm.enabled && storedWm.text.trim() ? storedWm : null,
+          watermark: watermark.enabled && watermark.text.trim() ? watermark : null,
         });
         setStatusMessage(`Auto selesai! Video tersimpan di: ${out}`);
       } else {
@@ -318,6 +328,7 @@ export function App() {
             <main className="relative z-10 grid flex-1 grid-cols-12 gap-4 overflow-y-auto p-4">
               <div className="col-span-12 flex flex-col gap-4 xl:col-span-8 2xl:col-span-9">
                 <AutoPilot ai={ai} onRun={runAuto} onOpenSettings={() => setShowSettings(true)} />
+                <WatermarkSettings watermark={watermark} onChange={updateWatermark} />
                 <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
                   <div className="2xl:col-span-5">
                     <ChapterImporter
@@ -376,6 +387,7 @@ export function App() {
                     beatMap={beatMap}
                     timeline={timeline}
                     playback={playback}
+                    watermark={watermark}
                     onStatusMessage={setStatusMessage}
                     onRenderSuccess={(out) => {
                       if (panels.length > 0) {

@@ -59,7 +59,7 @@ export const AutoPilot: React.FC<Props> = ({ ai, onRun, onOpenSettings }) => {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="card-title">
           <Sparkles className="w-4 h-4 text-fuchsia-400" />
-          Auto — Satu Klik
+          Satu Klik
         </h2>
         <button type="button" onClick={onOpenSettings} className="chip flex items-center gap-1">
           <Settings className="w-3 h-3" />

@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
   Download,
   FolderOpen,
   Loader2,
@@ -9,7 +7,6 @@ import {
   Play,
   RotateCw,
   Smartphone,
-  Type,
   Volume2,
   VolumeX,
   Zap,
@@ -20,7 +17,6 @@ import {
   getStoredWatermarkConfig,
   panelImageSrc,
   renderMontagemVideo,
-  saveStoredWatermarkConfig,
   WATERMARK_FONTS,
 } from "../services/tauriCommands";
 import { Playback } from "../services/usePlayback";
@@ -30,6 +26,7 @@ interface VideoPreviewProps {
   beatMap: BeatMap | null;
   timeline: TimelineClip[];
   playback: Playback;
+  watermark?: WatermarkConfig;
   onStatusMessage: (msg: string) => void;
   onRenderSuccess?: (outputPath: string) => void;
 }
@@ -39,22 +36,14 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   beatMap,
   timeline,
   playback,
+  watermark: propWatermark,
   onStatusMessage,
   onRenderSuccess,
 }) => {
   const [outputPath, setOutputPath] = useState<string>("");
   const [isRendering, setIsRendering] = useState<boolean>(false);
-  const [watermark, setWatermark] = useState<WatermarkConfig>(() => getStoredWatermarkConfig());
-  const [watermarkExpanded, setWatermarkExpanded] = useState<boolean>(false);
+  const watermark = propWatermark || getStoredWatermarkConfig();
   const currentTime = playback.time;
-
-  const updateWatermark = (updater: (prev: WatermarkConfig) => WatermarkConfig) => {
-    setWatermark((prev) => {
-      const next = updater(prev);
-      saveStoredWatermarkConfig(next);
-      return next;
-    });
-  };
 
   useEffect(() => {
     defaultOutputPath().then(setOutputPath);
@@ -302,239 +291,6 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
             <VolumeX className="ml-auto w-3.5 h-3.5 text-zinc-500" />
           )}
         </button>
-
-        {/* Watermark Video Settings Card */}
-        <div className="rounded-xl border border-white/[0.08] bg-zinc-900/60 overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setWatermarkExpanded(!watermarkExpanded)}
-            className="w-full flex items-center justify-between p-2.5 text-left hover:bg-white/[0.02] transition"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <Type className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-              <span className="text-xs font-semibold text-zinc-200">Watermark Video</span>
-              {watermark.enabled && watermark.text.trim() ? (
-                <span className="rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-violet-300 truncate max-w-[120px]">
-                  {watermark.text}
-                </span>
-              ) : (
-                <span className="text-[10px] text-zinc-500">(Nonaktif)</span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <input
-                type="checkbox"
-                checked={watermark.enabled}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  updateWatermark((w) => ({ ...w, enabled: e.target.checked }));
-                }}
-                className="rounded border-zinc-700 bg-zinc-800 text-violet-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                title="Aktifkan / Nonaktifkan Watermark"
-              />
-              {watermarkExpanded ? (
-                <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
-              )}
-            </div>
-          </button>
-
-          {watermarkExpanded && (
-            <div className="border-t border-white/[0.06] p-3 space-y-3 bg-zinc-950/40">
-              {/* Text Input */}
-              <div>
-                <label className="block text-[10px] text-zinc-400 mb-1">
-                  Teks Watermark
-                </label>
-                <input
-                  type="text"
-                  value={watermark.text}
-                  onChange={(e) =>
-                    updateWatermark((w) => ({ ...w, text: e.target.value }))
-                  }
-                  placeholder="@ComiCut"
-                  className="field text-xs font-mono"
-                />
-              </div>
-
-              {/* Font Preset Selection */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-[10px] text-zinc-400">
-                    Preset Font (Popular, Bold &amp; Lebar)
-                  </label>
-                  <span className="text-[9px] text-violet-400 font-mono">
-                    {watermark.font}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {WATERMARK_FONTS.map((f) => {
-                    const isSelected = watermark.font === f.id;
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => updateWatermark((w) => ({ ...w, font: f.id }))}
-                        className={`flex flex-col text-left px-2 py-1.5 rounded-lg border transition ${
-                          isSelected
-                            ? "border-violet-500/70 bg-violet-500/15 text-white"
-                            : "border-white/[0.06] bg-zinc-900/50 text-zinc-400 hover:text-zinc-200 hover:border-white/10"
-                        }`}
-                      >
-                        <span
-                          className="text-xs truncate"
-                          style={{
-                            fontFamily: f.fontFamily,
-                            fontWeight: f.fontWeight,
-                          }}
-                        >
-                          {f.name}
-                        </span>
-                        <span className="text-[8px] text-zinc-500 truncate leading-tight">
-                          {f.tag}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Position Presets & Sliders */}
-              <div>
-                <label className="block text-[10px] text-zinc-400 mb-1">
-                  Posisi Watermark
-                </label>
-                {/* Quick Buttons */}
-                <div className="grid grid-cols-3 gap-1 mb-2">
-                  {[
-                    { label: "Bawah (Default)", x: 50, y: 82 },
-                    { label: "Bawah Kiri", x: 15, y: 82 },
-                    { label: "Bawah Kanan", x: 85, y: 82 },
-                    { label: "Tengah", x: 50, y: 50 },
-                    { label: "Atas Kanan", x: 85, y: 10 },
-                    { label: "Atas", x: 50, y: 10 },
-                  ].map((pos) => {
-                    const isActive =
-                      watermark.positionX === pos.x && watermark.positionY === pos.y;
-                    return (
-                      <button
-                        key={pos.label}
-                        type="button"
-                        onClick={() =>
-                          updateWatermark((w) => ({
-                            ...w,
-                            positionX: pos.x,
-                            positionY: pos.y,
-                          }))
-                        }
-                        className={`text-[9px] py-1 px-1.5 rounded border transition truncate ${
-                          isActive
-                            ? "border-violet-500 bg-violet-500/20 text-white font-semibold"
-                            : "border-white/[0.06] bg-zinc-900/40 text-zinc-400 hover:text-zinc-200"
-                        }`}
-                      >
-                        {pos.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Fine Sliders */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[9px] text-zinc-400">
-                    <span>Posisi X (Horizontal)</span>
-                    <span className="font-mono text-zinc-300">{watermark.positionX}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="95"
-                    step="1"
-                    value={watermark.positionX}
-                    onChange={(e) =>
-                      updateWatermark((w) => ({
-                        ...w,
-                        positionX: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full accent-violet-500 cursor-pointer h-1 bg-zinc-800 rounded-lg"
-                  />
-
-                  <div className="flex items-center justify-between text-[9px] text-zinc-400 pt-1">
-                    <span>Posisi Y (Vertikal)</span>
-                    <span className="font-mono text-zinc-300">
-                      {watermark.positionY}% {watermark.positionY === 82 ? "(Safe Space Bawah)" : ""}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="95"
-                    step="1"
-                    value={watermark.positionY}
-                    onChange={(e) =>
-                      updateWatermark((w) => ({
-                        ...w,
-                        positionY: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full accent-violet-500 cursor-pointer h-1 bg-zinc-800 rounded-lg"
-                  />
-                  <p className="text-[8px] text-zinc-500 italic">
-                    *Default 82% menyisakan space di bawah agar tidak tertutup caption/UI TikTok &amp; Reels.
-                  </p>
-                </div>
-              </div>
-
-              {/* Opacity Slider */}
-              <div>
-                <div className="flex items-center justify-between text-[10px] text-zinc-400 mb-1">
-                  <span>Opacity (Transparansi)</span>
-                  <span className="font-mono font-semibold text-violet-300">
-                    {Math.round(watermark.opacity * 100)}% {watermark.opacity === 0.7 ? "(Default)" : ""}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.05"
-                  value={watermark.opacity}
-                  onChange={(e) =>
-                    updateWatermark((w) => ({
-                      ...w,
-                      opacity: Number(e.target.value),
-                    }))
-                  }
-                  className="w-full accent-violet-500 cursor-pointer h-1 bg-zinc-800 rounded-lg"
-                />
-              </div>
-
-              {/* Font Size Slider */}
-              <div>
-                <div className="flex items-center justify-between text-[10px] text-zinc-400 mb-1">
-                  <span>Ukuran Font</span>
-                  <span className="font-mono text-zinc-300">{watermark.fontSize || 48}px</span>
-                </div>
-                <input
-                  type="range"
-                  min="24"
-                  max="84"
-                  step="2"
-                  value={watermark.fontSize || 48}
-                  onChange={(e) =>
-                    updateWatermark((w) => ({
-                      ...w,
-                      fontSize: Number(e.target.value),
-                    }))
-                  }
-                  className="w-full accent-violet-500 cursor-pointer h-1 bg-zinc-800 rounded-lg"
-                />
-              </div>
-            </div>
-          )}
-        </div>
 
         <div>
           <div className="mb-1 flex items-center justify-between">
