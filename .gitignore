@@ -30,3 +30,4 @@ Thumbs.db
 # Generated Media / Cache
 *.mp4
 comicut_cache/
+release_assets/
