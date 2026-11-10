@@ -109,6 +109,16 @@ export interface VisionReviewConfig {
   maxPanelsToSelect: number;
 }
 
+export interface WatermarkConfig {
+  enabled: boolean;
+  text: string;
+  font: string;
+  fontSize?: number;
+  positionX: number; // 0 - 100 (% horizontal)
+  positionY: number; // 0 - 100 (% vertical)
+  opacity: number; // 0.1 - 1.0 (default: 0.7)
+}
+
 export interface RenderConfig {
   outputPath: string;
   width: number;
@@ -117,4 +127,5 @@ export interface RenderConfig {
   blurBackground: boolean;
   vignetteStrength: number;
   beatFlashEnabled: boolean;
+  watermark?: WatermarkConfig | null;
 }

@@ -10,6 +10,7 @@ import {
   ScraperRequest,
   TimelineClip,
   VisionReviewConfig,
+  WatermarkConfig,
 } from "../types/project";
 
 export const isTauri = () =>
@@ -384,4 +385,91 @@ export async function getDeviceDiagnostics(): Promise<DeviceDiagnostics> {
     };
   }
   return await invoke<DeviceDiagnostics>("get_device_diagnostics");
+}
+
+/* ============================================================================
+ * WATERMARK PRESETS & PERSISTENCE
+ * ============================================================================ */
+
+export interface WatermarkFontPreset {
+  id: string;
+  name: string;
+  fontFamily: string;
+  fontWeight: string;
+  tag: string;
+}
+
+export const WATERMARK_FONTS: WatermarkFontPreset[] = [
+  {
+    id: "Impact",
+    name: "Impact",
+    fontFamily: "Impact, sans-serif",
+    fontWeight: "normal",
+    tag: "Super Bold • Shorts/TikTok",
+  },
+  {
+    id: "Arial Black",
+    name: "Arial Black",
+    fontFamily: "'Arial Black', Gadget, sans-serif",
+    fontWeight: "900",
+    tag: "Ultra Bold • Modern & Bersih",
+  },
+  {
+    id: "Verdana Bold",
+    name: "Verdana Bold",
+    fontFamily: "Verdana, Geneva, sans-serif",
+    fontWeight: "bold",
+    tag: "Lebar • Ekstra Jelas",
+  },
+  {
+    id: "Trebuchet MS Bold",
+    name: "Trebuchet MS Bold",
+    fontFamily: "'Trebuchet MS', Helvetica, sans-serif",
+    fontWeight: "bold",
+    tag: "Elegan & Tegas",
+  },
+  {
+    id: "Segoe UI Black",
+    name: "Segoe UI Black",
+    fontFamily: "'Segoe UI', Tahoma, sans-serif",
+    fontWeight: "900",
+    tag: "Sleek • Solid",
+  },
+  {
+    id: "Tahoma Bold",
+    name: "Tahoma Bold",
+    fontFamily: "Tahoma, Verdana, sans-serif",
+    fontWeight: "bold",
+    tag: "Kontras Tinggi & Padat",
+  },
+];
+
+const WATERMARK_CONFIG_KEY = "comicut:watermark_config";
+
+export const DEFAULT_WATERMARK_CONFIG: WatermarkConfig = {
+  enabled: true,
+  text: "@ComiCut",
+  font: "Impact",
+  fontSize: 48,
+  positionX: 50,
+  positionY: 82, // Di bawah dengan space aman untuk UI TikTok / Reels
+  opacity: 0.7,  // Default 70%
+};
+
+export function getStoredWatermarkConfig(): WatermarkConfig {
+  try {
+    const raw = localStorage.getItem(WATERMARK_CONFIG_KEY);
+    if (!raw) return DEFAULT_WATERMARK_CONFIG;
+    return { ...DEFAULT_WATERMARK_CONFIG, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_WATERMARK_CONFIG;
+  }
+}
+
+export function saveStoredWatermarkConfig(cfg: WatermarkConfig): void {
+  try {
+    localStorage.setItem(WATERMARK_CONFIG_KEY, JSON.stringify(cfg));
+  } catch (err) {
+    console.warn("Failed to save watermark config:", err);
+  }
 }

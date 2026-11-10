@@ -103,6 +103,84 @@ pub fn render_timeline_to_mp4(
     Err(last_err)
 }
 
+struct TempFileGuard(std::path::PathBuf);
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn resolve_font_path(font_name: &str) -> Option<String> {
+    let win_fonts = std::path::Path::new("C:\\Windows\\Fonts");
+    let file = match font_name.to_lowercase().as_str() {
+        "impact" => "impact.ttf",
+        "arial black" | "ariblk" => "ariblk.ttf",
+        "arial bold" | "arial" => "arialbd.ttf",
+        "verdana bold" | "verdana" => "verdanab.ttf",
+        "trebuchet ms bold" | "trebuchet ms" | "trebuc" => "trebucbd.ttf",
+        "segoe ui black" | "seguibl" => "seguibl.ttf",
+        "segoe ui bold" | "segoe ui" => "segoeuib.ttf",
+        "tahoma bold" | "tahoma" => "tahomabd.ttf",
+        _ => "impact.ttf",
+    };
+    let path = win_fonts.join(file);
+    if path.is_file() {
+        let s = path.to_string_lossy().replace('\\', "/");
+        let escaped = s.replace(':', "\\:");
+        Some(escaped)
+    } else {
+        None
+    }
+}
+
+fn build_watermark_filter(
+    wm: &crate::models::timeline::WatermarkConfig,
+) -> Option<(String, TempFileGuard)> {
+    if !wm.enabled || wm.text.trim().is_empty() {
+        return None;
+    }
+
+    let id = format!(
+        "comicut_wm_{}_{}.txt",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+    let temp_file = std::env::temp_dir().join(id);
+    if std::fs::write(&temp_file, wm.text.trim()).is_err() {
+        return None;
+    }
+
+    let font_file_arg = match resolve_font_path(&wm.font) {
+        Some(escaped) => format!(":fontfile='{}'", escaped),
+        None => format!(":font='{}'", wm.font.replace('\'', "")),
+    };
+
+    let tf_escaped = temp_file
+        .to_string_lossy()
+        .replace('\\', "/")
+        .replace(':', "\\:");
+    let font_size = wm.font_size.unwrap_or(48).max(12).min(180);
+    let opacity = wm.opacity.clamp(0.05, 1.0);
+    let pos_x = (wm.position_x / 100.0).clamp(0.0, 1.0);
+    let pos_y = (wm.position_y / 100.0).clamp(0.0, 1.0);
+
+    let filter = format!(
+        "drawtext=textfile='{}':fontsize={}:fontcolor=white@{:.2}:bordercolor=black@{:.2}:borderw=3:x=(w-text_w)*{:.4}:y=(h-text_h)*{:.4}{}",
+        tf_escaped,
+        font_size,
+        opacity,
+        opacity,
+        pos_x,
+        pos_y,
+        font_file_arg
+    );
+
+    Some((filter, TempFileGuard(temp_file)))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn encode_with(
     enc: Encoder,
@@ -115,6 +193,13 @@ fn encode_with(
     fps: u32,
     has_audio: bool,
 ) -> Result<u64> {
+    let (wm_filter, _wm_guard) = config
+        .watermark
+        .as_ref()
+        .and_then(build_watermark_filter)
+        .map(|(f, g)| (Some(f), Some(g)))
+        .unwrap_or((None, None));
+
     let mut cmd = Command::new(tool("ffmpeg"));
     cmd.args(["-y", "-hide_banner", "-f", "rawvideo", "-pixel_format", "rgb24", "-video_size"])
         .arg(format!("{}x{}", width, height))
@@ -123,6 +208,9 @@ fn encode_with(
         .args(["-i", "-"]);
     if has_audio {
         cmd.arg("-i").arg(&beat_map.audio_path).args(["-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", "192k", "-shortest"]);
+    }
+    if let Some(ref filter) = wm_filter {
+        cmd.args(["-vf", filter]);
     }
     cmd.args(["-pix_fmt", "yuv420p"])
         .args(enc.args())
@@ -184,4 +272,58 @@ fn encode_with(
     }
 
     Ok(total_written)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::timeline::WatermarkConfig;
+
+    #[test]
+    fn test_watermark_filter_generation() {
+        let wm = WatermarkConfig {
+            enabled: true,
+            text: "@ComiCutTest".into(),
+            font: "Impact".into(),
+            font_size: Some(52),
+            position_x: 50.0,
+            position_y: 82.0,
+            opacity: 0.7,
+        };
+
+        let res = build_watermark_filter(&wm);
+        assert!(res.is_some());
+        let (filter_str, guard) = res.unwrap();
+        assert!(filter_str.contains("fontsize=52"));
+        assert!(filter_str.contains("fontcolor=white@0.70"));
+        assert!(filter_str.contains("x=(w-text_w)*0.5000"));
+        assert!(filter_str.contains("y=(h-text_h)*0.8200"));
+        assert!(guard.0.is_file());
+        drop(guard);
+    }
+
+    #[test]
+    fn test_watermark_filter_disabled_or_empty() {
+        let wm_disabled = WatermarkConfig {
+            enabled: false,
+            text: "@ComiCut".into(),
+            font: "Impact".into(),
+            font_size: None,
+            position_x: 50.0,
+            position_y: 82.0,
+            opacity: 0.7,
+        };
+        assert!(build_watermark_filter(&wm_disabled).is_none());
+
+        let wm_empty = WatermarkConfig {
+            enabled: true,
+            text: "   ".into(),
+            font: "Impact".into(),
+            font_size: None,
+            position_x: 50.0,
+            position_y: 82.0,
+            opacity: 0.7,
+        };
+        assert!(build_watermark_filter(&wm_empty).is_none());
+    }
 }

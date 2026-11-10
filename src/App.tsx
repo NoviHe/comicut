@@ -29,6 +29,7 @@ import {
   defaultOutputPath,
   downloadAudio,
   generateAutoTimeline,
+  getStoredWatermarkConfig,
   renderMontagemVideo,
   reviewEpicPanels,
   suggestSongQueries,
@@ -199,6 +200,7 @@ export function App() {
       if (input.render) {
         step(4, "Merender video MP4...");
         const out = await defaultOutputPath();
+        const storedWm = getStoredWatermarkConfig();
         await renderMontagemVideo(list, bm, clips, {
           outputPath: out,
           width: 1080,
@@ -207,6 +209,7 @@ export function App() {
           blurBackground: true,
           vignetteStrength: 0.35,
           beatFlashEnabled: true,
+          watermark: storedWm.enabled && storedWm.text.trim() ? storedWm : null,
         });
         setStatusMessage(`Auto selesai! Video tersimpan di: ${out}`);
       } else {

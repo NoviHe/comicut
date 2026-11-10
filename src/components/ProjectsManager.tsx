@@ -20,7 +20,7 @@ import {
   SavedProject,
   saveProject,
 } from "../services/projectStorage";
-import { panelImageSrc, defaultOutputPath, renderMontagemVideo } from "../services/tauriCommands";
+import { panelImageSrc, defaultOutputPath, getStoredWatermarkConfig, renderMontagemVideo } from "../services/tauriCommands";
 import { RenderConfig } from "../types/project";
 import { applyAdjust } from "../services/beatAdjust";
 
@@ -102,6 +102,7 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
     try {
       const activeBeatMap = applyAdjust(project.rawBeatMap, project.adjust);
       const out = await defaultOutputPath();
+      const storedWm = getStoredWatermarkConfig();
       const config: RenderConfig = {
         outputPath: out,
         width: 1080,
@@ -110,6 +111,7 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
         blurBackground: true,
         vignetteStrength: 0.35,
         beatFlashEnabled: true,
+        watermark: storedWm.enabled && storedWm.text.trim() ? storedWm : null,
       };
 
       const saved = await renderMontagemVideo(
