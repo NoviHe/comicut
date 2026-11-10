@@ -12,7 +12,7 @@ import {
   VisionReviewConfig,
 } from "../types/project";
 
-const isTauri = () =>
+export const isTauri = () =>
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 /** Real image URL for a panel (sliced PNG on disk); undefined for sample/browser panels. */
@@ -276,6 +276,11 @@ export async function getSystemDefaultExportDir(): Promise<string> {
 export async function showInFolder(path: string): Promise<void> {
   if (!isTauri()) return;
   await invoke("show_in_folder", { path });
+}
+
+export async function restartApp(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("app_restart");
 }
 
 export async function defaultOutputPath(filename?: string): Promise<string> {

@@ -10,8 +10,8 @@ use commands::{
     render_cmd::{ai_direct_timeline, generate_auto_timeline, render_montagem_video},
     scraper_cmd::{get_platform_presets, scrape_comic_chapter},
     system_cmd::{
-        check_dependencies, get_device_diagnostics, show_in_folder, window_close, window_minimize,
-        window_toggle_maximize,
+        app_restart, check_dependencies, get_device_diagnostics, show_in_folder, window_close,
+        window_minimize, window_toggle_maximize,
     },
 };
 
@@ -24,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_platform_presets,
             scrape_comic_chapter,
@@ -40,6 +41,7 @@ pub fn run() {
             install_dependency,
             get_device_diagnostics,
             show_in_folder,
+            app_restart,
             window_minimize,
             window_toggle_maximize,
             window_close

@@ -36,5 +36,13 @@
       "icons/icon.png",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE2OEFBMEUzQjdBM0I3MDIKUldRQ3Q2TzM0NkNLRmpiYlYrNEFjeWEzaXJmWG1Day8wV2lnYlFrV1hwRXBSZWF0VVNZYThnWVEK",
+      "endpoints": [
+        "https://github.com/NoviHe/comicut/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

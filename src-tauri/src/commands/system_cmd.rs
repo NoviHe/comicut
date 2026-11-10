@@ -198,6 +198,11 @@ pub fn window_close(window: tauri::Window) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn app_restart(app: tauri::AppHandle) {
+    app.restart();
+}
+
+#[tauri::command]
 pub async fn get_device_diagnostics() -> Result<DeviceDiagnostics, String> {
     tokio::task::spawn_blocking(|| {
         let app_name = "ComiCut Studio".to_string();

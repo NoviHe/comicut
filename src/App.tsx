@@ -12,6 +12,8 @@ import { NavTab, SidebarNav } from "./components/SidebarNav";
 import { TopBar } from "./components/TopBar";
 import { ProjectsManager } from "./components/ProjectsManager";
 import { SettingsView } from "./components/SettingsView";
+import { UpdateModal } from "./components/UpdateModal";
+import { AppUpdateInfo, checkComiCutUpdate } from "./services/appUpdater";
 import {
   buildProjectSnapshot,
   loadSavedProjects,
@@ -78,6 +80,16 @@ export function App() {
   const [statusMessage, setStatusMessage] = useState<string>(
     "Siap! Mulai dari langkah 1: pilih sumber komik."
   );
+  const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
+
+  // Check for updates on startup
+  useEffect(() => {
+    void checkComiCutUpdate().then((info) => {
+      if (info && info.available) {
+        setAvailableUpdate(info);
+      }
+    });
+  }, []);
 
   const beatMap = useMemo(
     () => (rawBeatMap ? applyAdjust(rawBeatMap, adjust) : null),
@@ -394,7 +406,16 @@ export function App() {
               onStatusMessage={setStatusMessage}
             />
           ) : activeNav === "settings" ? (
-            <SettingsView />
+            <SettingsView
+              onCheckUpdate={() => {
+                void checkComiCutUpdate().then((info) => {
+                  if (info && info.available) {
+                    setAvailableUpdate(info);
+                  }
+                });
+              }}
+              onUpdateFound={setAvailableUpdate}
+            />
           ) : (
             <main className="relative z-10 flex flex-1 items-center justify-center p-6">
               <div className="card flex max-w-md flex-col items-center gap-2 px-8 py-10 text-center">
@@ -410,6 +431,15 @@ export function App() {
           </footer>
         </div>
       </div>
+
+      {/* Dynamic In-App Update Modal */}
+      {availableUpdate && (
+        <UpdateModal
+          updateInfo={availableUpdate}
+          onClose={() => setAvailableUpdate(null)}
+          onStatusMessage={setStatusMessage}
+        />
+      )}
 
       {showSettings && (
         <AiSettingsModal settings={ai} onSave={setAi} onClose={() => setShowSettings(false)} />

@@ -12,6 +12,7 @@ import {
   Loader2,
   RefreshCw,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
 import {
   clearDefaultExportDir,
@@ -22,6 +23,7 @@ import {
   setDefaultExportDir,
   showInFolder,
 } from "../services/tauriCommands";
+import { AppUpdateInfo, checkComiCutUpdate } from "../services/appUpdater";
 
 interface SettingsCardProps {
   icon?: React.ReactNode;
@@ -68,10 +70,45 @@ export const SettingsCard: React.FC<SettingsCardProps> = ({
 
 const DEVICE_CACHE_KEY = "comicut:device_diagnostics";
 
-export const SettingsView: React.FC = () => {
+interface SettingsViewProps {
+  onCheckUpdate?: () => void;
+  onUpdateFound?: (info: AppUpdateInfo) => void;
+}
+
+export const SettingsView: React.FC<SettingsViewProps> = ({
+  onCheckUpdate,
+  onUpdateFound,
+}) => {
   const [selectedLang, setSelectedLang] = useState<string>("English");
   const [langDropdownOpen, setLangDropdownOpen] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Updates & Versions state
+  const [updatesExpanded, setUpdatesExpanded] = useState<boolean>(false);
+  const [checkingUpdates, setCheckingUpdates] = useState<boolean>(false);
+  const [updateStatus, setUpdateStatus] = useState<"uptodate" | "available" | "error">("uptodate");
+  const [foundUpdate, setFoundUpdate] = useState<AppUpdateInfo | null>(null);
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdates(true);
+    try {
+      const info = await checkComiCutUpdate();
+      if (info && info.available) {
+        setUpdateStatus("available");
+        setFoundUpdate(info);
+        if (onUpdateFound) {
+          onUpdateFound(info);
+        }
+      } else {
+        setUpdateStatus("uptodate");
+        setFoundUpdate(null);
+      }
+    } catch {
+      setUpdateStatus("error");
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
 
   // Device diagnostics state - saved to localStorage so it only reads once unless refreshed
   const [deviceInfo, setDeviceInfo] = useState<DeviceDiagnostics | null>(() => {
@@ -275,24 +312,110 @@ export const SettingsView: React.FC = () => {
 
         {/* Right Column: Expandable System Rows & Device Diagnostics */}
         <div className="space-y-3">
-          {/* Updates & Versions Row */}
-          <div className="group flex items-center justify-between rounded-2xl border border-white/[0.06] bg-[#111115]/90 px-5 py-3.5 shadow-lg backdrop-blur transition hover:border-white/15 cursor-pointer">
-            <div className="flex items-center gap-3 min-w-0">
-              <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300 transition shrink-0" />
-              <div className="min-w-0">
-                <span className="block text-[10px] font-semibold tracking-wider text-zinc-500 uppercase leading-none mb-1">
-                  System
-                </span>
-                <h3 className="text-sm font-semibold text-white truncate leading-tight">
-                  Updates &amp; Versions
-                </h3>
+          {/* Expandable Updates & Versions Card */}
+          <div className="rounded-2xl border border-white/[0.06] bg-[#111115]/90 shadow-lg backdrop-blur overflow-hidden transition hover:border-white/15">
+            {/* Header (Click to expand/collapse) */}
+            <div
+              onClick={() => setUpdatesExpanded(!updatesExpanded)}
+              className="flex items-center justify-between px-5 py-3.5 cursor-pointer select-none"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                {updatesExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0 transition" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-zinc-500 shrink-0 transition" />
+                )}
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-semibold tracking-wider text-zinc-500 uppercase leading-none mb-1">
+                    System
+                  </span>
+                  <h3 className="text-sm font-semibold text-white truncate leading-tight">
+                    Updates &amp; Versions
+                  </h3>
+                </div>
               </div>
+
+              {checkingUpdates ? (
+                <div className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800/80 px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-zinc-300 shrink-0">
+                  <Loader2 className="w-3 h-3 animate-spin text-violet-400" />
+                  <span>MEMERIKSA...</span>
+                </div>
+              ) : updateStatus === "available" ? (
+                <div className="flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-amber-300 shrink-0">
+                  <Sparkles className="w-3 h-3" />
+                  <span>UPDATE TERSEDIA</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-emerald-400 shrink-0">
+                  <Check className="w-3 h-3 stroke-[3]" />
+                  <span>UP TO DATE</span>
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-emerald-400 shrink-0">
-              <Check className="w-3 h-3 stroke-[3]" />
-              <span>UP TO DATE</span>
-            </div>
+            {/* Expanded Body */}
+            {updatesExpanded && (
+              <div className="border-t border-white/[0.06] p-4 space-y-3">
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between rounded-xl bg-zinc-900/40 border border-white/[0.03] px-4 py-2.5">
+                    <span className="text-zinc-500">Versi Terpasang</span>
+                    <span className="text-zinc-100 font-medium font-mono text-[11px]">
+                      ComiCut Studio v0.1.0
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-zinc-900/40 border border-white/[0.03] px-4 py-2.5">
+                    <span className="text-zinc-500">Kanal Pembaruan</span>
+                    <span className="text-zinc-100 font-medium text-[11px]">
+                      GitHub Releases (Official)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-zinc-900/40 border border-white/[0.03] px-4 py-2.5">
+                    <span className="text-zinc-500">Status Sistem</span>
+                    <span className="text-zinc-100 font-medium text-[11px]">
+                      {checkingUpdates
+                        ? "Sedang memeriksa rilis terbaru..."
+                        : updateStatus === "available"
+                        ? `Tersedia versi v${foundUpdate?.version || ""}`
+                        : "Versi Anda sudah paling baru"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/[0.04]">
+                  <span className="text-[11px] text-zinc-500">
+                    Pembaruan otomatis diperiksa saat aplikasi dibuka.
+                  </span>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={checkingUpdates}
+                      onClick={handleCheckUpdates}
+                      className="btn-ghost py-1 px-3 text-xs inline-flex items-center gap-1.5"
+                      title="Periksa apakah ada versi baru di GitHub"
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 ${checkingUpdates ? "animate-spin text-violet-400" : ""}`}
+                      />
+                      <span>{checkingUpdates ? "Memeriksa..." : "Periksa Pembaruan"}</span>
+                    </button>
+
+                    {updateStatus === "available" && foundUpdate && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateFound && onUpdateFound(foundUpdate)}
+                        className="btn-primary py-1 px-3 text-xs inline-flex items-center gap-1.5 shadow-md shadow-violet-950/40"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Pasang Update</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Expandable Default Export Path Card */}
