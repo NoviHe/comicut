@@ -283,8 +283,27 @@ export async function restartApp(): Promise<void> {
   await invoke("app_restart");
 }
 
+/**
+ * Menghasilkan nama file render default dengan awalan "comicut_render_"
+ * serta timestamp lengkap berisi tanggal, bulan, tahun, jam, menit, dan detik
+ * agar tidak tertimpa hasil render sebelumnya.
+ * Format: comicut_render_YYYY-MM-DD_HH-mm-ss.mp4
+ * Contoh: comicut_render_2026-11-10_18-45-00.mp4
+ */
+export function generateDefaultRenderFilename(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+
+  return `comicut_render_${year}-${month}-${day}_${hours}-${minutes}-${seconds}.mp4`;
+}
+
 export async function defaultOutputPath(filename?: string): Promise<string> {
-  const name = filename || "comicut_montagem.mp4";
+  const name = filename || generateDefaultRenderFilename();
   try {
     const customDir = getDefaultExportDir();
     const { videoDir, join } = await import("@tauri-apps/api/path");

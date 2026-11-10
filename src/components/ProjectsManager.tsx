@@ -101,7 +101,7 @@ export const ProjectsManager: React.FC<ProjectsManagerProps> = ({
 
     try {
       const activeBeatMap = applyAdjust(project.rawBeatMap, project.adjust);
-      const out = project.lastOutputPath || (await defaultOutputPath());
+      const out = await defaultOutputPath();
       const config: RenderConfig = {
         outputPath: out,
         width: 1080,

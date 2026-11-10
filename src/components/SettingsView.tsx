@@ -453,6 +453,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="border-t border-white/[0.06] p-4 space-y-3">
                 <p className="text-xs leading-relaxed text-zinc-400">
                   Pilih folder default di komputer Anda untuk menyimpan hasil video render (Reels &amp; Shorts).
+                  Nama file otomatis menggunakan format <code className="text-violet-300 font-mono text-[11px]">comicut_render_YYYY-MM-DD_HH-mm-ss.mp4</code> dengan tanggal dan timestamp agar tidak saling menimpa.
                 </p>
 
                 {/* Path display box */}

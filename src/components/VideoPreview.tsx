@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
 import {
   Download,
+  FolderOpen,
   Loader2,
   Pause,
   Play,
+  RotateCw,
   Smartphone,
   Volume2,
   VolumeX,
@@ -102,6 +104,21 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
       (b) => b.isSubBassHit && currentTime >= b.timestampSec && currentTime - b.timestampSec < 0.1
     ) ?? false;
 
+  const handleBrowseOutput = async () => {
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const selected = await save({
+        defaultPath: outputPath,
+        filters: [{ name: "MP4 Video (*.mp4)", extensions: ["mp4"] }],
+      });
+      if (selected) {
+        setOutputPath(selected);
+      }
+    } catch (err) {
+      console.warn("Gagal membuka dialog simpan file:", err);
+    }
+  };
+
   const handleRenderMp4 = async () => {
     if (timeline.length === 0 || !beatMap) return;
     setIsRendering(true);
@@ -119,6 +136,8 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
       const saved = await renderMontagemVideo(panels, beatMap, timeline, config);
       onStatusMessage(`Render selesai! Video tersimpan di: ${saved}`);
       onRenderSuccess?.(saved);
+      // Perbarui nama file output dengan timestamp baru untuk render berikutnya
+      defaultOutputPath().then(setOutputPath);
     } catch (err: any) {
       onStatusMessage(`Render gagal: ${err?.message || String(err)}`);
     } finally {
@@ -237,15 +256,37 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         </button>
 
         <div>
-          <label className="mb-1 block text-[10px] text-zinc-500">
-            Lokasi output MP4 (H.264 60fps)
-          </label>
-          <input
-            type="text"
-            value={outputPath}
-            onChange={(e) => setOutputPath(e.target.value)}
-            className="field font-mono"
-          />
+          <div className="mb-1 flex items-center justify-between">
+            <label className="text-[10px] text-zinc-500">
+              Lokasi output MP4 (H.264 60fps)
+            </label>
+            <button
+              type="button"
+              onClick={() => defaultOutputPath().then(setOutputPath)}
+              className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors"
+              title="Perbarui nama file dengan timestamp waktu saat ini"
+            >
+              <RotateCw className="w-2.5 h-2.5" />
+              Reset Nama Baru
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={outputPath}
+              onChange={(e) => setOutputPath(e.target.value)}
+              className="field font-mono flex-1 text-xs"
+              placeholder="comicut_render_..."
+            />
+            <button
+              type="button"
+              onClick={handleBrowseOutput}
+              className="btn-ghost px-2.5 py-1.5 text-xs text-zinc-300 hover:text-white"
+              title="Pilih folder atau nama file lain"
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         <button
