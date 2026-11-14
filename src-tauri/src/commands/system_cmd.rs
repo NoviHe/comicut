@@ -118,8 +118,32 @@ fn version_of(bin: &str, ver_args: &[&str]) -> Option<String> {
 
 /// Installed version of a known tool id (binary name == id), as resolved on PATH.
 pub(crate) fn installed_version(id: &str) -> Option<String> {
+    if id == "anime-face" {
+        return super::deps_cmd::face_model_path().map(|_| "1.4 (YOLOv8n)".to_string());
+    }
     let args: &[&str] = if id == "ffmpeg" { &["-version"] } else { &["--version"] };
     version_of(id, args)
+}
+
+fn onnx_face_dep() -> DepStatus {
+    let path = super::deps_cmd::face_model_path();
+    let version = path.as_ref().map(|_| "1.4 (YOLOv8n)".to_string());
+    let managed = path.as_deref().is_some_and(super::deps_cmd::is_managed);
+    let bundled = path.as_deref().is_some_and(super::deps_cmd::is_bundled);
+    DepStatus {
+        id: "anime-face",
+        name: "ONNX Face Detector",
+        purpose: "Model ONNX deteksi wajah karakter (Style: Face Character)",
+        required: false,
+        found: path.is_some(),
+        version,
+        path: path.map(|p| p.to_string_lossy().to_string()),
+        outdated: false,
+        install_hint: "Klik Install di kartu ini (HuggingFace deepghs/anime_face_detection)",
+        installable: super::deps_cmd::is_installable("anime-face"),
+        managed,
+        bundled,
+    }
 }
 
 fn dep(
@@ -160,6 +184,7 @@ pub async fn check_dependencies() -> Result<DepReport, String> {
             dep("yt-dlp", "yt-dlp", "Unduh audio dari link / pencarian", false, "yt-dlp", &["--version"], "pip install -U \"yt-dlp[default]\""),
             dep("node", "Node.js", "JS runtime untuk yt-dlp (YouTube)", false, "node", &["--version"], "winget install OpenJS.NodeJS.LTS"),
             dep("deno", "Deno", "Alternatif JS runtime untuk yt-dlp", false, "deno", &["--version"], "winget install DenoLand.Deno"),
+            onnx_face_dep(),
         ];
         let system = SystemInfo {
             cpu: std::env::var("PROCESSOR_IDENTIFIER").unwrap_or_else(|_| "CPU tidak diketahui".into()),

@@ -1,12 +1,14 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { AlertCircle, Check, Loader2, Settings, Sparkles } from "lucide-react";
-import { PlatformKind } from "../types/project";
+import { PanelStyle, PlatformKind } from "../types/project";
 import { AiSettings, defaultModel } from "../services/aiSettings";
+import { PANEL_STYLES } from "./ChapterImporter";
 
 export interface AutoInput {
   url: string;
   song: string;
   render: boolean;
+  panelStyle: PanelStyle;
 }
 
 export const platformFor = (url: string): PlatformKind => {
@@ -20,11 +22,21 @@ const STEPS = ["Scrape panel", "Pilih lagu & beat", "AI pilih panel", "AI direct
 
 interface Props {
   ai: AiSettings;
+  panelStyle: PanelStyle;
+  onChangePanelStyle: (style: PanelStyle) => void;
   onRun: (input: AutoInput, step: (i: number, label: string) => void) => Promise<void>;
   onOpenSettings: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export const AutoPilot: React.FC<Props> = ({ ai, onRun, onOpenSettings }) => {
+export const AutoPilot: React.FC<Props> = ({
+  ai,
+  panelStyle,
+  onChangePanelStyle,
+  onRun,
+  onOpenSettings,
+  onDirtyChange,
+}) => {
   const [url, setUrl] = useState("");
   const [song, setSong] = useState("");
   const [render, setRender] = useState(false);
@@ -35,12 +47,16 @@ export const AutoPilot: React.FC<Props> = ({ ai, onRun, onOpenSettings }) => {
   const useAi = ai.provider !== "HeuristicOnly";
   const steps = render ? STEPS : STEPS.slice(0, 4);
 
+  useEffect(() => {
+    onDirtyChange?.(Boolean(url.trim() || song.trim() || render || stepIdx >= 0 || error));
+  }, [url, song, render, stepIdx, error, onDirtyChange]);
+
   const go = async () => {
     setRunning(true);
     setError("");
     setStepIdx(0);
     try {
-      await onRun({ url: url.trim(), song: song.trim(), render }, (i, label) => {
+      await onRun({ url: url.trim(), song: song.trim(), render, panelStyle }, (i, label) => {
         setStepIdx(i);
         setStepLabel(label);
       });
@@ -84,16 +100,40 @@ export const AutoPilot: React.FC<Props> = ({ ai, onRun, onOpenSettings }) => {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <label className="flex items-center gap-2 text-[11px] text-zinc-400">
-          <input
-            type="checkbox"
-            checked={render}
-            onChange={(e) => setRender(e.target.checked)}
-            disabled={running}
-            className="accent-fuchsia-500"
-          />
-          Render MP4 otomatis ke folder Videos
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 text-xs">
+            {PANEL_STYLES.map(({ id, label, icon: Icon }) => {
+              const active = panelStyle === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={running}
+                  onClick={() => onChangePanelStyle(id)}
+                  className={`flex items-center gap-1.5 rounded-md px-2 py-1 transition ${
+                    active
+                      ? "bg-violet-600/25 text-violet-200 font-medium"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-violet-300" : "text-zinc-500"}`} />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <label className="flex items-center gap-2 text-[11px] text-zinc-400">
+            <input
+              type="checkbox"
+              checked={render}
+              onChange={(e) => setRender(e.target.checked)}
+              disabled={running}
+              className="accent-fuchsia-500"
+            />
+            Render MP4 otomatis ke folder Videos
+          </label>
+        </div>
         <button
           type="button"
           onClick={go}

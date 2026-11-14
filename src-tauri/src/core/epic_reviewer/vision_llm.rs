@@ -4,16 +4,38 @@ use serde_json::{json, Value};
 use std::io::Cursor;
 use std::time::Duration;
 
-use crate::models::panel::{Panel, PanelRole, VisionReviewConfig};
+use crate::models::panel::{Panel, PanelRole, PanelStyle, VisionReviewConfig};
 
 // Request size ceiling: one thumbnail per panel.
 const MAX_LLM_PANELS: usize = 40;
 
-const PROMPT: &str = "You pick the most epic comic panels for a fast-cut montage video (Reels/Shorts). \
+const PROMPT_DEFAULT: &str = "You pick the most epic comic panels for a fast-cut montage video (Reels/Shorts). \
 Panels follow, each preceded by its number. Rate every panel. Reply with ONLY a JSON array, no prose: \
-[{\"panel\":1,\"score\":0.0-1.0,\"role\":\"Hook|BuildUp|AuraCloseup|Climax|VerticalPan|Filler\"}]. \
+[{\"panel\":1,\"score\":0.0-1.0,\"role\":\"Hook|BuildUp|AuraCloseup|Climax|VerticalPan|Filler\",\"has_bubble\":false}]. \
 Score high for action, dramatic poses, power reveals, striking composition; low for plain dialogue or empty frames. \
 Give score 0 and role Filler to scanlator credit pages, site ads, watermarks, 'join our discord/app' banners and translator/editor credits.";
+
+const PROMPT_FACE: &str = "You pick character face panels for a fast-cut comic montage video (Reels/Shorts). \
+Panels follow, each preceded by its number. Rate every panel. Reply with ONLY a JSON array, no prose: \
+[{\"panel\":1,\"score\":0.0-1.0,\"role\":\"Hook|BuildUp|AuraCloseup|Climax|VerticalPan|Filler\",\"has_bubble\":false}]. \
+Score high (0.75-1.0) ONLY when a character's face/expression is clearly visible as the main subject without speech bubbles. \
+Set \"has_bubble\":true and score <= 0.15 if speech bubbles or dialogue text cover the panel. \
+Score 0 and role Filler if there is no character face or if it is a credit/ad page.";
+
+const PROMPT_EPIC_SCENE: &str = "You pick pure action/VFX panels for a fast-cut comic montage video (Reels/Shorts). \
+Panels follow, each preceded by its number. Rate every panel. Reply with ONLY a JSON array, no prose: \
+[{\"panel\":1,\"score\":0.0-1.0,\"role\":\"Hook|BuildUp|AuraCloseup|Climax|VerticalPan|Filler\",\"has_bubble\":false}]. \
+Score high (0.75-1.0) ONLY for intense combat, fighting, weapon slashes, explosions, speed lines, aura/VFX without speech bubbles. \
+Set \"has_bubble\":true and score <= 0.15 if speech bubbles or dialogue text appear in the panel. \
+Score 0 and role Filler for calm talking scenes, static backgrounds, or credit/ad pages.";
+
+fn prompt_for(style: PanelStyle) -> &'static str {
+    match style {
+        PanelStyle::Default => PROMPT_DEFAULT,
+        PanelStyle::FaceCharacter => PROMPT_FACE,
+        PanelStyle::EpicScene => PROMPT_EPIC_SCENE,
+    }
+}
 
 pub async fn score_and_rank_panels(
     mut panels: Vec<Panel>,
@@ -55,10 +77,17 @@ fn heuristic_rank(panels: &mut [Panel], config: &VisionReviewConfig) {
             picked.push(i);
         }
     }
-    // Backfill if dedupe left room.
+    // Backfill if dedupe left room (in FaceCharacter/EpicScene mode, skip panels rejected by style filter unless none matched).
+    let style_strict = config.panel_style != PanelStyle::Default;
+    if style_strict {
+        picked.retain(|&i| panels[i].heuristic_score >= 0.45);
+    }
     for &i in &order {
         if picked.len() >= max_select {
             break;
+        }
+        if style_strict && panels[i].heuristic_score < 0.45 && !picked.is_empty() {
+            continue;
         }
         if !picked.contains(&i) {
             picked.push(i);
@@ -107,10 +136,10 @@ async fn llm_rerank(panels: &mut [Panel], config: &VisionReviewConfig) -> Result
     }
 
     println!(
-        "[ai] provider={} model={} base={:?} panels_sent={}",
-        config.provider, config.model_name, config.base_url, images.len()
+        "[ai] provider={} model={} style={:?} base={:?} panels_sent={}",
+        config.provider, config.model_name, config.panel_style, config.base_url, images.len()
     );
-    let text = ask(config, PROMPT, &images).await?;
+    let text = ask(config, prompt_for(config.panel_style), &images).await?;
     println!("[ai] response: {}", text);
 
     let (s, e) = (text.find('['), text.rfind(']'));
@@ -126,8 +155,13 @@ async fn llm_rerank(panels: &mut [Panel], config: &VisionReviewConfig) -> Result
     for v in &verdicts {
         let Some(n) = v["panel"].as_u64().filter(|n| *n >= 1) else { continue };
         let Some(p) = panels.get_mut(n as usize - 1) else { continue };
+        let has_bubble = v["has_bubble"].as_bool().unwrap_or(false);
         if let Some(sc) = v["score"].as_f64() {
-            p.ai_epic_score = Some((sc as f32).clamp(0.0, 1.0));
+            let mut s = (sc as f32).clamp(0.0, 1.0);
+            if has_bubble && config.panel_style != PanelStyle::Default {
+                s = s.min(0.15);
+            }
+            p.ai_epic_score = Some(s);
         }
         if let Ok(role) = serde_json::from_value::<PanelRole>(v["role"].clone()) {
             p.role = role;
@@ -141,8 +175,16 @@ async fn llm_rerank(panels: &mut [Panel], config: &VisionReviewConfig) -> Result
             .partial_cmp(&score(&panels[*a]))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    let top: std::collections::HashSet<usize> =
-        order.into_iter().take(config.max_panels_to_select.max(1)).collect();
+    let min_score = if config.panel_style != PanelStyle::Default { 0.45 } else { 0.0 };
+    let mut top: std::collections::HashSet<usize> = order
+        .iter()
+        .copied()
+        .filter(|&i| score(&panels[i]) >= min_score)
+        .take(config.max_panels_to_select.max(1))
+        .collect();
+    if top.is_empty() {
+        top = order.into_iter().take(config.max_panels_to_select.max(1)).collect();
+    }
     for (i, p) in panels.iter_mut().enumerate() {
         p.selected = top.contains(&i);
     }

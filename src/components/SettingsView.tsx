@@ -29,6 +29,7 @@ import {
   getInstallMode,
   InstallModeInfo,
 } from "../services/appUpdater";
+import { DependencyState, DependencyStatus } from "./DependencyStatus";
 
 interface SettingsCardProps {
   icon?: React.ReactNode;
@@ -78,11 +79,14 @@ const DEVICE_CACHE_KEY = "comicut:device_diagnostics";
 interface SettingsViewProps {
   onCheckUpdate?: () => void;
   onUpdateFound?: (info: AppUpdateInfo) => void;
+  /** Owned by App so dependency checks run once per session, not per page visit. */
+  deps: DependencyState;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   onCheckUpdate,
   onUpdateFound,
+  deps,
 }) => {
   const [selectedLang, setSelectedLang] = useState<string>("English");
   const [langDropdownOpen, setLangDropdownOpen] = useState<boolean>(false);
@@ -267,8 +271,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* Settings Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full items-start">
-        {/* Left Column: App Language Card */}
-        <div>
+        {/* Left Column: App Language Card + Dependency Status */}
+        <div className="space-y-4">
           <SettingsCard
             icon={<Languages className="w-4 h-4 text-zinc-400" />}
             category="Language"
@@ -318,6 +322,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               )}
             </div>
           </SettingsCard>
+
+          <DependencyStatus deps={deps} />
         </div>
 
         {/* Right Column: Expandable System Rows & Device Diagnostics */}
@@ -370,7 +376,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="flex items-center justify-between rounded-xl bg-zinc-900/40 border border-white/[0.03] px-4 py-2.5">
                     <span className="text-zinc-500">Versi Terpasang</span>
                     <span className="text-zinc-100 font-medium font-mono text-[11px]">
-                      ComiCut Studio v{installMode?.currentVersion || "0.1.1"}
+                      ComiCut Studio v{installMode?.currentVersion || "0.1.2"}
                     </span>
                   </div>
 
@@ -412,7 +418,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/[0.04]">
                   <span className="text-[11px] text-zinc-500">
-                    Pembaruan otomatis diperiksa saat aplikasi dibuka.
+                    Pembaruan diperiksa saat aplikasi dibuka atau lewat tombol ini.
                   </span>
 
                   <div className="flex items-center gap-2">

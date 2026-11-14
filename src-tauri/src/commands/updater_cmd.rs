@@ -100,6 +100,7 @@ pub fn detect_portable_mode(exe_dir: &Path) -> bool {
     if path_lower.contains("\\program files\\")
         || path_lower.contains("\\program files (x86)\\")
         || path_lower.contains("\\appdata\\local\\programs\\")
+        || path_lower.contains("\\appdata\\local\\comicut")
         || path_lower.contains("\\windowsapps\\")
     {
         return false;

@@ -4,6 +4,7 @@ import {
   BeatMap,
   ComicFormat,
   Panel,
+  PanelStyle,
   PlatformPreset,
   RenderConfig,
   ScrapeResult,
@@ -79,9 +80,43 @@ export async function scrapeComicChapter(
   return await invoke<ScrapeResult>("scrape_comic_chapter", { request });
 }
 
+export async function openChapterBrowser(url: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error(
+      "Browser interaktif membutuhkan runtime Tauri Rust (jalankan dengan npm run tauri dev)."
+    );
+  }
+  await invoke("open_chapter_browser", { url });
+}
+
+export async function closeChapterBrowser(): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("close_chapter_browser");
+}
+
+export async function scrapeFromChapterBrowser(params: {
+  comicFormat: ComicFormat;
+  panelStyle: PanelStyle;
+  customSelector?: string;
+  customReferer?: string;
+}): Promise<ScrapeResult> {
+  if (!isTauri()) {
+    throw new Error(
+      "Browser interaktif membutuhkan runtime Tauri Rust (jalankan dengan npm run tauri dev)."
+    );
+  }
+  return await invoke<ScrapeResult>("scrape_from_chapter_browser", params);
+}
+
+export async function onChapterBrowserClosed(cb: () => void): Promise<UnlistenFn> {
+  if (!isTauri()) return () => {};
+  return await listen("chapter-browser-closed", () => cb());
+}
+
 export async function importLocalChapter(
   folderPath: string,
-  comicFormat: ComicFormat
+  comicFormat: ComicFormat,
+  panelStyle: PanelStyle = "Default"
 ): Promise<Panel[]> {
   if (!isTauri()) {
     throw new Error(
@@ -91,6 +126,7 @@ export async function importLocalChapter(
   return await invoke<Panel[]>("import_local_chapter", {
     folderPath,
     comicFormat,
+    panelStyle,
   });
 }
 

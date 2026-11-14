@@ -2,12 +2,13 @@ use std::fs;
 use std::path::PathBuf;
 
 use crate::core::comic_slicer::slice_comic_images;
-use crate::models::panel::{ComicFormat, Panel};
+use crate::models::panel::{ComicFormat, Panel, PanelStyle};
 
 #[tauri::command]
 pub async fn import_local_chapter(
     folder_path: String,
     comic_format: ComicFormat,
+    panel_style: Option<PanelStyle>,
 ) -> Result<Vec<Panel>, String> {
     let entries = fs::read_dir(&folder_path)
         .map_err(|e| format!("Gagal membaca folder {}: {}", folder_path, e))?;
@@ -36,5 +37,6 @@ pub async fn import_local_chapter(
         ));
     }
 
-    slice_comic_images(&image_paths, comic_format).map_err(|e| e.to_string())
+    slice_comic_images(&image_paths, comic_format, panel_style.unwrap_or_default())
+        .map_err(|e| e.to_string())
 }

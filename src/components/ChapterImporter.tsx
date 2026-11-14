@@ -8,28 +8,59 @@ import {
   Loader2,
   ExternalLink,
   Layers,
+  LayoutGrid,
+  ScanFace,
+  Swords,
+  Download,
+  X,
 } from "lucide-react";
 import {
   ComicFormat,
   Panel,
+  PanelStyle,
   PlatformKind,
   PlatformPreset,
+  ScrapeResult,
 } from "../types/project";
 import {
+  closeChapterBrowser,
   DEFAULT_PLATFORM_PRESETS,
   getPlatformPresets,
   importLocalChapter,
+  isTauri,
+  onChapterBrowserClosed,
+  openChapterBrowser,
   scrapeComicChapter,
+  scrapeFromChapterBrowser,
 } from "../services/tauriCommands";
+
+const isBrowserFallbackError = (message: string) =>
+  /turnstile|javascript \(spa\)|http 403|http 503|tidak ditemukan gambar chapter/i.test(
+    message
+  );
 
 interface ChapterImporterProps {
   onPanelsLoaded: (panels: Panel[], chapterTitle: string) => void;
   onStatusMessage: (msg: string) => void;
+  panelStyle: PanelStyle;
+  onChangePanelStyle: (style: PanelStyle) => void;
 }
+
+export const PANEL_STYLES: {
+  id: PanelStyle;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: "Default", label: "Default", icon: LayoutGrid },
+  { id: "FaceCharacter", label: "Face Character", icon: ScanFace },
+  { id: "EpicScene", label: "Epic Scene", icon: Swords },
+];
 
 export const ChapterImporter: React.FC<ChapterImporterProps> = ({
   onPanelsLoaded,
   onStatusMessage,
+  panelStyle,
+  onChangePanelStyle,
 }) => {
   const [mode, setMode] = useState<"url" | "local">("url");
   const [presets, setPresets] = useState<PlatformPreset[]>(
@@ -49,6 +80,8 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
   const [localFolderPath, setLocalFolderPath] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [browserOpen, setBrowserOpen] = useState<boolean>(false);
+  const [browserFallbackHint, setBrowserFallbackHint] = useState<string>("");
   const [savedCustomDomains, setSavedCustomDomains] = useState<string[]>([
     "https://www.webtoons.com/",
     "https://mangadex.org/",
@@ -60,71 +93,145 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
     });
   }, []);
 
-  const handleSelectPlatform = (platformId: PlatformKind) => {
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    onChapterBrowserClosed(() => {
+      if (active) setBrowserOpen(false);
+    }).then((fn) => {
+      if (!active) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, []);
+
+  const applyPlatformPreset = (platformId: PlatformKind) => {
     setSelectedPlatform(platformId);
     const preset = presets.find((p) => p.id === platformId);
     if (preset) {
       setComicFormat(preset.defaultFormat);
       setCustomSelector(preset.imageSelector);
       setCustomReferer(preset.refererHeader);
-      if (platformId === "Webtoon" && !url.includes("webtoons.com")) {
-        setUrl(preset.exampleUrl);
-      } else if (platformId === "MangaDex" && !url.includes("mangadex.org")) {
-        setUrl(preset.exampleUrl);
-      }
+    }
+    return preset;
+  };
+
+  const handleSelectPlatform = (platformId: PlatformKind) => {
+    const preset = applyPlatformPreset(platformId);
+    if (!preset) return;
+    if (platformId === "Webtoon" && !url.includes("webtoons.com")) {
+      setUrl(preset.exampleUrl);
+    } else if (platformId === "MangaDex" && !url.includes("mangadex.org")) {
+      setUrl(preset.exampleUrl);
     }
   };
 
   const handleUrlChange = (newUrl: string) => {
     setUrl(newUrl);
     const lower = newUrl.toLowerCase();
-    if (lower.includes("webtoons.com")) {
-      setSelectedPlatform("Webtoon");
-      setComicFormat("WebtoonVertical");
-      setCustomReferer("https://www.webtoons.com/");
-    } else if (lower.includes("mangadex.org")) {
-      setSelectedPlatform("MangaDex");
-      setComicFormat("MangaRTL");
-      setCustomReferer("https://mangadex.org/");
-    } else if (newUrl.startsWith("http")) {
-      setSelectedPlatform("Custom");
+    const nextPlatform: PlatformKind | null = lower.includes("webtoons.com")
+      ? "Webtoon"
+      : lower.includes("mangadex.org")
+        ? "MangaDex"
+        : newUrl.startsWith("http")
+          ? "Custom"
+          : null;
+
+    if (!nextPlatform) return;
+    if (nextPlatform !== selectedPlatform) {
+      applyPlatformPreset(nextPlatform);
+    }
+    if (nextPlatform === "Custom") {
       try {
-        const parsed = new URL(newUrl);
-        setCustomReferer(parsed.origin + "/");
+        setCustomReferer(new URL(newUrl).origin + "/");
       } catch {
         // ignore invalid partial URL
       }
     }
   };
 
+  const applyScrapeResult = (result: ScrapeResult) => {
+    try {
+      const origin = new URL(result.sourceUrl || url.trim()).origin + "/";
+      if (!savedCustomDomains.includes(origin)) {
+        setSavedCustomDomains((prev) => [origin, ...prev]);
+      }
+    } catch {
+      // ignore
+    }
+    setBrowserOpen(false);
+    setBrowserFallbackHint("");
+    onPanelsLoaded(result.extractedPanels, result.chapterTitle);
+    onStatusMessage(
+      `Berhasil mengekstrak ${result.extractedPanels.length} panel dari ${result.sourcePlatform}!`
+    );
+  };
+
+  const handleOpenBrowser = async (hint?: string) => {
+    if (!url.trim()) return;
+    try {
+      await openChapterBrowser(url.trim());
+      setBrowserOpen(true);
+      if (hint) setBrowserFallbackHint(hint);
+      onStatusMessage(
+        "Jendela Browser Chapter terbuka. Selesaikan verifikasi & pastikan gambar chapter muncul di layar, lalu klik 'Ambil Gambar dari Browser'."
+      );
+    } catch (err: any) {
+      onStatusMessage(`Gagal membuka browser chapter: ${err?.message || String(err)}`);
+    }
+  };
+
+  const handleCloseBrowser = async () => {
+    try {
+      await closeChapterBrowser();
+    } finally {
+      setBrowserOpen(false);
+    }
+  };
+
+  const handleExtractFromBrowser = async () => {
+    setIsLoading(true);
+    onStatusMessage("Mengambil gambar yang tampil dari jendela browser & memotong panel...");
+    try {
+      const result = await scrapeFromChapterBrowser({
+        comicFormat,
+        panelStyle,
+        customSelector: customSelector.trim() || undefined,
+        customReferer: customReferer.trim() || undefined,
+      });
+      applyScrapeResult(result);
+    } catch (err: any) {
+      onStatusMessage(`Gagal mengambil gambar dari browser: ${err?.message || String(err)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleScrapeUrl = async () => {
     if (!url.trim()) return;
     setIsLoading(true);
+    setBrowserFallbackHint("");
     onStatusMessage(`Mengambil & memotong panel dari ${url}...`);
     try {
       const result = await scrapeComicChapter({
         url: url.trim(),
         platform: selectedPlatform,
         comicFormat,
+        panelStyle,
         customSelector: customSelector.trim() || undefined,
         customReferer: customReferer.trim() || undefined,
       });
-
-      try {
-        const origin = new URL(url.trim()).origin + "/";
-        if (!savedCustomDomains.includes(origin)) {
-          setSavedCustomDomains((prev) => [origin, ...prev]);
-        }
-      } catch {
-        // ignore
-      }
-
-      onPanelsLoaded(result.extractedPanels, result.chapterTitle);
-      onStatusMessage(
-        `Berhasil mengekstrak ${result.extractedPanels.length} panel dari ${result.sourcePlatform}!`
-      );
+      applyScrapeResult(result);
     } catch (err: any) {
-      onStatusMessage(`Gagal scrape URL: ${err?.message || String(err)}`);
+      const msg = err?.message || String(err);
+      if (isTauri() && isBrowserFallbackError(msg)) {
+        await handleOpenBrowser(msg);
+      } else {
+        onStatusMessage(`Gagal scrape URL: ${msg}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -137,7 +244,8 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
     try {
       const panels = await importLocalChapter(
         localFolderPath.trim(),
-        comicFormat
+        comicFormat,
+        panelStyle
       );
       onPanelsLoaded(panels, localFolderPath.split(/[\\/]/).pop() || "Chapter");
       onStatusMessage(`Berhasil memotong ${panels.length} panel dari folder!`);
@@ -352,17 +460,89 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
           </div>
 
           {/* Opsi Advanced Custom Scraper */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-[11px] text-violet-400 hover:text-violet-300 flex items-center gap-1"
-            >
-              <SlidersHorizontal className="w-3 h-3" />
-              {showAdvanced
-                ? "Sembunyikan Konfigurasi Selector Web Custom"
-                : "Atur CSS Selector / Referer (Untuk Web Komik Custom)"}
-            </button>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="text-[11px] text-violet-400 hover:text-violet-300 flex items-center gap-1"
+              >
+                <SlidersHorizontal className="w-3 h-3" />
+                {showAdvanced
+                  ? "Sembunyikan Konfigurasi Selector Web Custom"
+                  : "Atur CSS Selector / Referer (Untuk Web Komik Custom)"}
+              </button>
+              <button
+                type="button"
+                disabled={isLoading || !url.trim()}
+                onClick={() => handleOpenBrowser()}
+                className="text-[11px] text-zinc-400 hover:text-violet-300 flex items-center gap-1 disabled:opacity-40"
+                title="Buka halaman di jendela browser Tauri untuk situs SPA/Turnstile"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Buka di Browser Interaktif
+              </button>
+            </div>
+
+            {(browserOpen || browserFallbackHint) && (
+              <div className="p-2.5 bg-amber-950/30 border border-amber-500/40 rounded-lg space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[11px] text-amber-200 leading-relaxed">
+                    {browserOpen
+                      ? "Jendela Browser Chapter terbuka. Selesaikan verifikasi / scroll hingga gambar chapter tampil di layar, lalu klik tombol di bawah."
+                      : browserFallbackHint}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBrowserFallbackHint("");
+                      void handleCloseBrowser();
+                    }}
+                    className="text-zinc-400 hover:text-zinc-200 shrink-0"
+                    title="Tutup panel browser"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {browserOpen ? (
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={handleExtractFromBrowser}
+                      className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                      Ambil &amp; Potong Gambar dari Browser
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isLoading || !url.trim()}
+                      onClick={() => handleOpenBrowser()}
+                      className="btn-primary py-1.5 px-3 text-xs flex items-center gap-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Buka Browser Chapter
+                    </button>
+                  )}
+                  {browserOpen && (
+                    <button
+                      type="button"
+                      disabled={isLoading}
+                      onClick={() => handleOpenBrowser()}
+                      className="btn-ghost py-1.5 px-2.5 text-xs"
+                    >
+                      Muat Ulang URL
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {showAdvanced && (
               <div className="mt-2 p-2.5 bg-zinc-950/90 border border-zinc-800 rounded-lg space-y-2">
@@ -450,6 +630,33 @@ export const ChapterImporter: React.FC<ChapterImporterProps> = ({
           >
             Komik Barat (Kiri-Kanan)
           </button>
+        </div>
+      </div>
+
+      {/* Style seleksi panel */}
+      <div>
+        <label className="block text-[11px] uppercase tracking-wider text-zinc-400 mb-1.5">
+          Style
+        </label>
+        <div className="grid grid-cols-3 gap-1.5 text-xs">
+          {PANEL_STYLES.map(({ id, label, icon: Icon }) => {
+            const active = panelStyle === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onChangePanelStyle(id)}
+                className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 transition ${
+                  active
+                    ? "bg-violet-600/20 border-violet-500 text-violet-200 font-medium"
+                    : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                }`}
+              >
+                <Icon className={`h-3.5 w-3.5 shrink-0 ${active ? "text-violet-300" : "text-zinc-500"}`} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

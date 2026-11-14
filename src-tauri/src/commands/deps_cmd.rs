@@ -59,6 +59,14 @@ fn spec(id: &str) -> Option<Spec> {
             checksum_entry: None,
             files: &["deno.exe"],
         },
+        "anime-face" => Spec {
+            name: "ONNX Face Detector",
+            kind: Kind::Exe,
+            url: "https://huggingface.co/deepghs/anime_face_detection/resolve/main/face_detect_v1.4_n/model.onnx",
+            checksum_url: "https://huggingface.co/deepghs/anime_face_detection/raw/main/face_detect_v1.4_n/model.onnx",
+            checksum_entry: None,
+            files: &["anime-face.onnx"],
+        },
         _ => return None,
     })
 }
@@ -86,6 +94,16 @@ pub(crate) fn exe_dir() -> Option<PathBuf> {
 
 pub fn is_bundled(path: &Path) -> bool {
     path.parent().is_some_and(|p| Some(p.to_path_buf()) == exe_dir())
+}
+
+/// Resolve the ONNX character face detection model (`anime-face.onnx`):
+/// managed bin dir (`%LOCALAPPDATA%\ComiCut\bin`) first, then bundled next to `ComiCut.exe`.
+pub fn face_model_path() -> Option<PathBuf> {
+    let candidates = std::iter::once(managed_bin_dir().join("anime-face.onnx"))
+        .chain(exe_dir().map(|d| d.join("anime-face.onnx")));
+    candidates.into_iter().find(|p| {
+        std::fs::metadata(p).map(|m| m.is_file() && m.len() > 100_000).unwrap_or(false)
+    })
 }
 
 /// Resolve a tool to an absolute path using the app's priority order:
@@ -217,6 +235,23 @@ async fn latest_version(client: &reqwest::Client, id: &str) -> Result<String, St
             let json: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
             json["tag_name"].as_str().ok_or("tag_name tidak ada")?.to_string()
         }
+        "anime-face" => {
+            let body = get_text("https://huggingface.co/api/models/deepghs/anime_face_detection/tree/main").await?;
+            let json: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+            let mut best = String::from("1.4");
+            if let Some(arr) = json.as_array() {
+                for item in arr {
+                    if let Some(p) = item["path"].as_str() {
+                        if let Some(v) = p.strip_prefix("face_detect_v").and_then(|s| s.strip_suffix("_n")) {
+                            if is_newer(v, &best) == Some(true) {
+                                best = v.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+            best
+        }
         _ => return Err("tidak didukung".into()),
     };
     let v = v.trim().trim_start_matches('v').to_string();
@@ -240,7 +275,7 @@ pub struct DepUpdate {
 #[tauri::command]
 pub async fn check_dependency_updates() -> Result<Vec<DepUpdate>, String> {
     let client = client()?;
-    let ids = ["ffmpeg", "yt-dlp", "deno"];
+    let ids = ["ffmpeg", "yt-dlp", "deno", "anime-face"];
     let latest = futures_join(&client, &ids).await;
     let installed = tokio::task::spawn_blocking(move || {
         ids.iter().map(|id| super::system_cmd::installed_version(id)).collect::<Vec<_>>()
@@ -266,13 +301,14 @@ pub async fn check_dependency_updates() -> Result<Vec<DepUpdate>, String> {
         .collect())
 }
 
-async fn futures_join(client: &reqwest::Client, ids: &[&str; 3]) -> Vec<Result<String, String>> {
-    let (a, b, c) = tokio::join!(
+async fn futures_join(client: &reqwest::Client, ids: &[&str; 4]) -> Vec<Result<String, String>> {
+    let (a, b, c, d) = tokio::join!(
         latest_version(client, ids[0]),
         latest_version(client, ids[1]),
-        latest_version(client, ids[2])
+        latest_version(client, ids[2]),
+        latest_version(client, ids[3])
     );
-    vec![a, b, c]
+    vec![a, b, c, d]
 }
 
 // ---------------------------------------------------------------- install / update

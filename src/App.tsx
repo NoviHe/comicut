@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Scissors, Settings, Terminal } from "lucide-react";
-import { BeatMap, EffectType, Panel, TimelineClip, WatermarkConfig } from "./types/project";
+import { BeatMap, EffectType, Panel, PanelStyle, TimelineClip, WatermarkConfig } from "./types/project";
 import { ChapterImporter } from "./components/ChapterImporter";
 import { PanelGallery } from "./components/PanelGallery";
 import { AudioWaveform } from "./components/AudioWaveform";
 import { TimelineEditor } from "./components/TimelineEditor";
 import { VideoPreview } from "./components/VideoPreview";
 import { WatermarkSettings } from "./components/WatermarkSettings";
-import { DependencyStatus } from "./components/DependencyStatus";
+import { useDependencies } from "./components/DependencyStatus";
 import { AiSettingsModal } from "./components/AiSettingsModal";
 import { NavTab, SidebarNav } from "./components/SidebarNav";
 import { TopBar } from "./components/TopBar";
@@ -21,7 +21,7 @@ import {
   SavedProject,
   saveProject,
 } from "./services/projectStorage";
-import { loadAiSettings, toReviewConfig } from "./services/aiSettings";
+import { loadAiSettings, loadPanelStyle, savePanelStyle, toReviewConfig } from "./services/aiSettings";
 import { applyAdjust, BeatAdjust, localSongQueries, NO_ADJUST, songFit, targetPanelCount } from "./services/beatAdjust";
 import { usePlayback } from "./services/usePlayback";
 import {
@@ -76,9 +76,16 @@ export function App() {
   const [adjust, setAdjust] = useState<BeatAdjust>(NO_ADJUST);
   const [timeline, setTimeline] = useState<TimelineClip[]>([]);
   const [ai, setAi] = useState(loadAiSettings);
+  const [panelStyle, setPanelStyleState] = useState<PanelStyle>(loadPanelStyle);
+  const setPanelStyle = (s: PanelStyle) => {
+    setPanelStyleState(s);
+    savePanelStyle(s);
+  };
   const [showSettings, setShowSettings] = useState(false);
   const [activeNav, setActiveNav] = useState<NavTab>("home");
   const [currentProjectId, setCurrentProjectId] = useState<string | undefined>();
+  const [sessionKey, setSessionKey] = useState(0);
+  const [autoDirty, setAutoDirty] = useState(false);
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>(() => loadSavedProjects());
   const [watermark, setWatermark] = useState<WatermarkConfig>(() => getStoredWatermarkConfig());
 
@@ -93,9 +100,13 @@ export function App() {
     "Siap! Mulai dari langkah 1: pilih sumber komik."
   );
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdateInfo | null>(null);
+  const deps = useDependencies(setStatusMessage);
 
-  // Check for updates on startup
+  // Check for app updates once on startup (ref guards StrictMode's double effect).
+  const updateChecked = useRef(false);
   useEffect(() => {
+    if (updateChecked.current) return;
+    updateChecked.current = true;
     void checkComiCutUpdate().then((info) => {
       if (info && info.available) {
         setAvailableUpdate(info);
@@ -154,6 +165,7 @@ export function App() {
         url: input.url,
         platform: platformFor(input.url),
         comicFormat: input.url.includes("mangadex") ? "MangaRTL" : "WebtoonVertical",
+        panelStyle: input.panelStyle,
       });
       let list = scraped.extractedPanels;
       if (list.length === 0) throw new Error("Tidak ada panel yang berhasil diekstrak.");
@@ -172,7 +184,7 @@ export function App() {
         if (useAi) {
           step(1, "AI membaca mood panel untuk memilih lagu...");
           try {
-            queries = await suggestSongQueries(list, toReviewConfig(ai, want));
+            queries = await suggestSongQueries(list, toReviewConfig(ai, want, input.panelStyle));
           } catch (e: any) {
             setStatusMessage(`Saran lagu AI gagal (${e?.message || e}); memakai preset lokal.`);
           }
@@ -198,7 +210,7 @@ export function App() {
 
       step(2, useAi ? "AI memilih panel epic..." : "Memilih panel epic (lokal)...");
       try {
-        list = await reviewEpicPanels(list, toReviewConfig(ai, targetPanelCount(bm)));
+        list = await reviewEpicPanels(list, toReviewConfig(ai, targetPanelCount(bm), input.panelStyle));
       } catch (e: any) {
         setStatusMessage(`Review AI gagal (${e?.message || e}); memakai pilihan lokal.`);
       }
@@ -259,7 +271,12 @@ export function App() {
   };
 
   const hasActiveSession =
-    panels.length > 0 || timeline.length > 0 || !!rawBeatMap || !!currentProjectId;
+    panels.length > 0 ||
+    timeline.length > 0 ||
+    !!rawBeatMap ||
+    !!currentProjectId ||
+    autoDirty ||
+    panelStyle !== "Default";
 
   const handleNewSession = () => {
     if (playback.playing) {
@@ -272,6 +289,9 @@ export function App() {
     setRawBeatMap(null);
     setAdjust(NO_ADJUST);
     setTimeline([]);
+    setPanelStyle("Default");
+    setAutoDirty(false);
+    setSessionKey((k) => k + 1);
     setActiveNav("home");
     setStatusMessage("Sesi baru dimulai. Silakan pilih sumber komik untuk memulai.");
   };
@@ -315,6 +335,7 @@ export function App() {
         canGoBack={activeNav !== "home"}
         onBack={() => setActiveNav("home")}
         onOpenSettings={() => setShowSettings(true)}
+        aiProvider={ai.provider}
         hasActiveSession={hasActiveSession}
         onNewSession={handleNewSession}
       />
@@ -327,17 +348,28 @@ export function App() {
           {activeNav === "home" ? (
             <main className="relative z-10 grid flex-1 grid-cols-12 gap-4 overflow-y-auto p-4">
               <div className="col-span-12 flex flex-col gap-4 xl:col-span-8 2xl:col-span-9">
-                <AutoPilot ai={ai} onRun={runAuto} onOpenSettings={() => setShowSettings(true)} />
+                <AutoPilot
+                  key={`auto-${sessionKey}`}
+                  ai={ai}
+                  panelStyle={panelStyle}
+                  onChangePanelStyle={setPanelStyle}
+                  onRun={runAuto}
+                  onOpenSettings={() => setShowSettings(true)}
+                  onDirtyChange={setAutoDirty}
+                />
                 <WatermarkSettings watermark={watermark} onChange={updateWatermark} />
                 <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
                   <div className="2xl:col-span-5">
                     <ChapterImporter
+                      key={`importer-${sessionKey}`}
                       onPanelsLoaded={(p, title) => {
                         setPanels(p);
                         setChapterTitle(title);
                         setTimeline([]);
                       }}
                       onStatusMessage={setStatusMessage}
+                      panelStyle={panelStyle}
+                      onChangePanelStyle={setPanelStyle}
                     />
                   </div>
                   <div className="2xl:col-span-7">
@@ -347,6 +379,7 @@ export function App() {
                       onUpdatePanels={setPanels}
                       onStatusMessage={setStatusMessage}
                       ai={ai}
+                      panelStyle={panelStyle}
                       targetPanels={targetPanels}
                       onOpenSettings={() => setShowSettings(true)}
                     />
@@ -354,6 +387,7 @@ export function App() {
                 </div>
 
                 <AudioWaveform
+                  key={`audio-${sessionKey}`}
                   beatMap={rawBeatMap ? beatMap : null}
                   adjust={adjust}
                   onAdjust={setAdjust}
@@ -377,12 +411,12 @@ export function App() {
                     await sync(beatMap, selected, true);
                   }}
                 />
-                <DependencyStatus onStatusMessage={setStatusMessage} />
               </div>
 
               <div className="col-span-12 xl:col-span-4 2xl:col-span-3">
                 <div className="xl:sticky xl:top-0">
                   <VideoPreview
+                    key={`preview-${sessionKey}`}
                     panels={panels}
                     beatMap={beatMap}
                     timeline={timeline}
@@ -430,6 +464,7 @@ export function App() {
                 });
               }}
               onUpdateFound={setAvailableUpdate}
+              deps={deps}
             />
           ) : (
             <main className="relative z-10 flex flex-1 items-center justify-center p-6">

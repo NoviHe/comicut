@@ -1,6 +1,6 @@
 [package]
 name = "comicut"
-version = "0.1.1"
+version = "0.1.2"
 description = "Automated Webtoon/Manga Epic Panel Slicer & Montagem Reels/Shorts Video Generator"
 authors = ["ComiCut Developer"]
 edition = "2021"
@@ -33,6 +33,7 @@ anyhow = "1.0"
 base64 = "0.22"
 sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+tract-onnx = "0.21"
 
 # Keep `tauri dev` fast for image/audio/video processing without slowing incremental builds.
 [profile.dev]

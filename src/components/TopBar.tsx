@@ -1,6 +1,7 @@
 import React from "react";
-import { ChevronLeft, Minus, Plus, Settings, Square, X } from "lucide-react";
+import { ChevronLeft, Minus, Plus, Square, X } from "lucide-react";
 import { ComiCutLogo } from "./ComiCutLogo";
+import { AiSettings } from "../services/aiSettings";
 import {
   closeWindow,
   minimizeWindow,
@@ -11,6 +12,8 @@ interface TopBarProps {
   canGoBack?: boolean;
   onBack?: () => void;
   onOpenSettings: () => void;
+  /** Active AI provider; drives the settings button label (Rust Local vs BYOK). */
+  aiProvider: AiSettings["provider"];
   hasActiveSession?: boolean;
   onNewSession?: () => void;
 }
@@ -19,9 +22,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   canGoBack = false,
   onBack,
   onOpenSettings,
+  aiProvider,
   hasActiveSession = false,
   onNewSession,
 }) => {
+  const byok = aiProvider !== "HeuristicOnly";
   return (
     <header
       data-tauri-drag-region
@@ -87,11 +92,15 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={onOpenSettings}
-            className="btn-ghost"
-            title="Pengaturan AI Vision"
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition active:scale-95 ${
+              byok
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:border-amber-500/50 hover:bg-amber-500/20"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-500/50 hover:bg-emerald-500/20"
+            }`}
+            title={byok ? `AI Vision: ${aiProvider} (API key sendiri)` : "AI Vision: Rust Local (tanpa AI)"}
           >
-            <Settings className="h-3.5 w-3.5" />
-            <span>Pengaturan</span>
+            <span className={`h-1.5 w-1.5 rounded-full ${byok ? "bg-amber-400" : "bg-emerald-400"}`} />
+            <span>{byok ? "BYOK" : "Rust Local"}</span>
           </button>
 
           {/* Integrated Frameless Window Controls */}

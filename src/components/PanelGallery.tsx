@@ -9,7 +9,7 @@ import {
   Sparkles,
   Settings,
 } from "lucide-react";
-import { Panel, PanelRole } from "../types/project";
+import { Panel, PanelRole, PanelStyle } from "../types/project";
 import {
   AiSettings,
   defaultModel,
@@ -23,6 +23,7 @@ interface PanelGalleryProps {
   onUpdatePanels: (panels: Panel[]) => void;
   onStatusMessage: (msg: string) => void;
   ai: AiSettings;
+  panelStyle: PanelStyle;
   /** How many panels the song can show (from the beat map); drives auto-pick. */
   targetPanels: number;
   onOpenSettings: () => void;
@@ -43,6 +44,7 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
   onUpdatePanels,
   onStatusMessage,
   ai,
+  panelStyle,
   targetPanels,
   onOpenSettings,
 }) => {
@@ -63,7 +65,7 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
     setIsReviewing(true);
     onStatusMessage("Menganalisis panel epic (Heuristik Visual + AI Reviewer)...");
     try {
-      const reviewed = await reviewEpicPanels(panels, toReviewConfig(ai, targetPanels));
+      const reviewed = await reviewEpicPanels(panels, toReviewConfig(ai, targetPanels, panelStyle));
       onUpdatePanels(reviewed);
       onStatusMessage(
         `Review selesai! ${
@@ -196,6 +198,14 @@ export const PanelGallery: React.FC<PanelGalleryProps> = ({
                       {Math.round(panel.edgeDensity * 100)}%
                     </span>
                   </div>
+                  {panel.caption && (
+                    <p
+                      className="mt-1 truncate text-[10px] text-zinc-400"
+                      title={panel.caption}
+                    >
+                      {panel.caption}
+                    </p>
+                  )}
                 </div>
 
                 {/* Role Selector */}

@@ -7,6 +7,14 @@ pub enum ComicFormat {
     MangaLTR,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum PanelStyle {
+    #[default]
+    Default,
+    FaceCharacter,
+    EpicScene,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PanelRole {
     Hook,
@@ -53,4 +61,6 @@ pub struct VisionReviewConfig {
     pub model_name: String,
     pub base_url: Option<String>,
     pub max_panels_to_select: usize,
+    #[serde(default)]
+    pub panel_style: PanelStyle,
 }

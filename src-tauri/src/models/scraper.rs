@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::models::panel::{ComicFormat, Panel};
+use crate::models::panel::{ComicFormat, Panel, PanelStyle};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PlatformKind {
@@ -28,6 +28,8 @@ pub struct ScraperRequest {
     pub url: String,
     pub platform: PlatformKind,
     pub comic_format: ComicFormat,
+    #[serde(default)]
+    pub panel_style: PanelStyle,
     pub custom_selector: Option<String>,
     pub custom_referer: Option<String>,
 }

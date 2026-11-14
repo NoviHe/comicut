@@ -8,7 +8,10 @@ use commands::{
     comic_cmd::import_local_chapter,
     deps_cmd::{check_dependency_updates, install_dependency},
     render_cmd::{ai_direct_timeline, generate_auto_timeline, render_montagem_video},
-    scraper_cmd::{get_platform_presets, scrape_comic_chapter},
+    scraper_cmd::{
+        close_chapter_browser, get_platform_presets, open_chapter_browser, scrape_comic_chapter,
+        scrape_from_chapter_browser,
+    },
     system_cmd::{
         app_restart, check_dependencies, get_device_diagnostics, show_in_folder, window_close,
         window_minimize, window_toggle_maximize,
@@ -29,6 +32,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_platform_presets,
             scrape_comic_chapter,
+            open_chapter_browser,
+            close_chapter_browser,
+            scrape_from_chapter_browser,
             import_local_chapter,
             review_epic_panels,
             analyze_audio_beats,

@@ -1,5 +1,13 @@
 export type ComicFormat = "WebtoonVertical" | "MangaRTL" | "MangaLTR";
 
+/**
+ * Panel selection & cropping style:
+ * - Default: all panels, standard heuristic/AI epic scoring.
+ * - FaceCharacter: only panels with a detected character face, speech bubbles cropped out.
+ * - EpicScene: only high-action / fight / VFX panels, speech bubbles cropped out.
+ */
+export type PanelStyle = "Default" | "FaceCharacter" | "EpicScene";
+
 export type PlatformKind = "Webtoon" | "MangaDex" | "VoraToon" | "Custom";
 
 export interface PlatformPreset {
@@ -17,6 +25,7 @@ export interface ScraperRequest {
   url: string;
   platform: PlatformKind;
   comicFormat: ComicFormat;
+  panelStyle?: PanelStyle;
   customSelector?: string;
   customReferer?: string;
 }
@@ -107,6 +116,7 @@ export interface VisionReviewConfig {
   baseUrl?: string;
   modelName: string;
   maxPanelsToSelect: number;
+  panelStyle?: PanelStyle;
 }
 
 export interface WatermarkConfig {

@@ -36,9 +36,12 @@ const progressLabel = (p: DepProgress) => {
     : `Mengunduh ${mb(p.downloaded)} MB`;
 };
 
-export const DependencyStatus: React.FC<{ onStatusMessage: (m: string) => void }> = ({
-  onStatusMessage,
-}) => {
+/**
+ * Dependency state lives in App (not in the panel) so the startup scan/update
+ * check runs once per app session, not every time the Settings page mounts.
+ * After startup, checks only run when the user presses a button.
+ */
+export function useDependencies(onStatusMessage: (m: string) => void) {
   const [report, setReport] = useState<DepReport | null>(null);
   const [updates, setUpdates] = useState<Record<string, DepUpdate>>({});
   const [progress, setProgress] = useState<Record<string, DepProgress | undefined>>({});
@@ -106,7 +109,7 @@ export const DependencyStatus: React.FC<{ onStatusMessage: (m: string) => void }
     [onStatusMessage, refresh, checkUpdates],
   );
 
-  // On open: local scan, then online update check (+ optional auto-update).
+  // Once per app session: local scan, then online update check (+ optional auto-update).
   useEffect(() => {
     if (started.current) return;
     started.current = true;
@@ -125,6 +128,42 @@ export const DependencyStatus: React.FC<{ onStatusMessage: (m: string) => void }
     setAutoUpdate(v);
     localStorage.setItem(AUTO_KEY, v ? "1" : "0");
   };
+
+  return {
+    report,
+    updates,
+    progress,
+    installing,
+    busy,
+    checking,
+    error,
+    autoUpdate,
+    lastCheck,
+    refresh,
+    checkUpdates,
+    install,
+    toggleAuto,
+  };
+}
+
+export type DependencyState = ReturnType<typeof useDependencies>;
+
+export const DependencyStatus: React.FC<{ deps: DependencyState }> = ({ deps }) => {
+  const {
+    report,
+    updates,
+    progress,
+    installing,
+    busy,
+    checking,
+    error,
+    autoUpdate,
+    lastCheck,
+    refresh,
+    checkUpdates,
+    install,
+    toggleAuto,
+  } = deps;
 
   const pending = Object.values(updates).filter((u) => u.updateAvailable).map((u) => u.id);
   const ytdlp = report?.deps.find((d) => d.id === "yt-dlp");
@@ -166,7 +205,7 @@ export const DependencyStatus: React.FC<{ onStatusMessage: (m: string) => void }
             {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CloudDownload className="w-3.5 h-3.5" />}
             Cek Update
           </button>
-          <button type="button" disabled={locked} onClick={refresh} className="btn-ghost">
+          <button type="button" disabled={locked} onClick={() => void refresh()} className="btn-ghost">
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Cek Ulang
           </button>
@@ -183,7 +222,7 @@ export const DependencyStatus: React.FC<{ onStatusMessage: (m: string) => void }
 
       {error && <p className="text-[11px] text-rose-300">{error}</p>}
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 sm:grid-cols-2">
         {report?.deps.map((d) => {
           const u = updates[d.id];
           const b = badge(d, u);
